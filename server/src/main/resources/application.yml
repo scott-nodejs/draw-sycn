@@ -1,0 +1,26 @@
+server:
+  port: 8788
+
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${MYSQL_URL:jdbc:mysql://127.0.0.1:3306/whiteboard?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai}
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:}
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: assign_id
+
+whiteboard:
+  storage-root: ./data/storage/whiteboard
+  qiniu:
+    access-key: ${QINIU_ACCESS_KEY:}
+    secret-key: ${QINIU_SECRET_KEY:}
+    bucket: ${QINIU_BUCKET:}
+    upload-url: ${QINIU_UPLOAD_URL:https://upload.qiniup.com}
+    public-domain: ${QINIU_PUBLIC_DOMAIN:}
+    token-expire-seconds: ${QINIU_TOKEN_EXPIRE_SECONDS:3600}

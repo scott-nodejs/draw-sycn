@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS whiteboard_recording_session (
+  id VARCHAR(64) NOT NULL PRIMARY KEY,
+  session_id VARCHAR(128) NOT NULL,
+  lesson_id VARCHAR(128) NULL,
+  teacher_id VARCHAR(128) NULL,
+  room_id VARCHAR(128) NULL,
+  title VARCHAR(255) NOT NULL DEFAULT '',
+  storage_provider VARCHAR(32) NOT NULL DEFAULT 'local',
+  baseline_snapshot_url VARCHAR(1024) NOT NULL DEFAULT '',
+  event_manifest_url VARCHAR(1024) NOT NULL DEFAULT '',
+  duration_ms BIGINT NOT NULL DEFAULT 0,
+  event_count BIGINT NOT NULL DEFAULT 0,
+  chunk_count BIGINT NOT NULL DEFAULT 0,
+  status TINYINT NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  UNIQUE KEY uk_whiteboard_recording_session_session_id (session_id),
+  KEY idx_whiteboard_recording_session_lesson_id (lesson_id),
+  KEY idx_whiteboard_recording_session_room_id (room_id),
+  KEY idx_whiteboard_recording_session_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
