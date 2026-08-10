@@ -5,7 +5,7 @@ export function createSyncUri(roomId: string, role: 'teacher' | 'viewer') {
   const sessionId = getOrCreateSessionId(role)
   const url = new URL(`${baseUrl.replace(/\/$/, '')}/${encodeURIComponent(roomId)}`)
   url.searchParams.set('role', role)
-  url.searchParams.set('sessionId', sessionId)
+  url.searchParams.set('appSessionId', sessionId)
   return url.toString()
 }
 

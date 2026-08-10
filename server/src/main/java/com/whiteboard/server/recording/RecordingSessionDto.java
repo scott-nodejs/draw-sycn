@@ -12,6 +12,10 @@ public class RecordingSessionDto {
   public String storageProvider;
   public String baselineSnapshotUrl;
   public String eventManifestUrl;
+  public String audioUrl;
+  public String audioMimeType;
+  public Long audioDurationMs;
+  public Long audioStartOffsetMs;
   public Long durationMs;
   public Long eventCount;
   public Long chunkCount;
@@ -29,6 +33,10 @@ public class RecordingSessionDto {
     dto.storageProvider = entity.getStorageProvider();
     dto.baselineSnapshotUrl = entity.getBaselineSnapshotUrl();
     dto.eventManifestUrl = entity.getEventManifestUrl();
+    dto.audioUrl = entity.getAudioUrl();
+    dto.audioMimeType = entity.getAudioMimeType();
+    dto.audioDurationMs = entity.getAudioDurationMs();
+    dto.audioStartOffsetMs = entity.getAudioStartOffsetMs();
     dto.durationMs = entity.getDurationMs();
     dto.eventCount = entity.getEventCount();
     dto.chunkCount = entity.getChunkCount();

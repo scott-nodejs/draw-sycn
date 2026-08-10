@@ -1,6 +1,6 @@
 import type { RecordingPackage } from '../types'
 
-export type UploadPartType = 'baseline' | 'event-manifest' | 'event-chunk' | 'package'
+export type UploadPartType = 'baseline' | 'event-manifest' | 'event-chunk' | 'package' | 'audio'
 export type UploadPartStatus = 'pending' | 'uploading' | 'uploaded' | 'failed'
 
 export type UploadPart = {
@@ -10,6 +10,7 @@ export type UploadPart = {
   sizeBytes: number
   chunkIndex?: number
   error?: string
+  mimeType?: string
 }
 
 export type UploadPlan = {
@@ -17,7 +18,7 @@ export type UploadPlan = {
   parts: UploadPart[]
 }
 
-export function createUploadPlan(recording: RecordingPackage): UploadPlan {
+export function createUploadPlan(recording: RecordingPackage, audioBlob?: Blob | null): UploadPlan {
   const parts: UploadPart[] = [
     {
       id: 'baseline-snapshot',
@@ -32,6 +33,16 @@ export function createUploadPlan(recording: RecordingPackage): UploadPlan {
       sizeBytes: jsonByteSize(recording.eventManifest ?? null),
     },
   ]
+
+  if (recording.audio && audioBlob) {
+    parts.push({
+      id: 'teacher-audio',
+      type: 'audio',
+      status: 'pending',
+      sizeBytes: audioBlob.size,
+      mimeType: recording.audio.mimeType,
+    })
+  }
 
   for (const chunk of recording.chunks ?? []) {
     parts.push({

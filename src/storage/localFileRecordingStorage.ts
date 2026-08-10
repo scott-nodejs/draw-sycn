@@ -3,7 +3,10 @@ import type { RecordingStorage } from './RecordingStorage'
 
 export function createLocalFileRecordingStorage(): RecordingStorage {
   return {
-    async save(recording) {
+    async save(recording, audioBlob) {
+      if (audioBlob && recording.audio) {
+        downloadBlob(audioBlob, `${recording.sessionId}.${audioExtension(recording.audio.mimeType)}`)
+      }
       downloadJson(recording, `${recording.sessionId}.json`)
 
       return {
@@ -32,6 +35,21 @@ export function createLocalFileRecordingStorage(): RecordingStorage {
       return (await response.json()) as RecordingPackage
     },
   }
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1_000)
+}
+
+function audioExtension(mimeType: string) {
+  if (mimeType.includes('ogg')) return 'ogg'
+  if (mimeType.includes('mp4')) return 'm4a'
+  return 'webm'
 }
 
 function downloadJson(data: unknown, filename: string) {

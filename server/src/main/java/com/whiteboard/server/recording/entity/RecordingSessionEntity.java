@@ -16,6 +16,10 @@ public class RecordingSessionEntity {
   private String storageProvider;
   private String baselineSnapshotUrl;
   private String eventManifestUrl;
+  private String audioUrl;
+  private String audioMimeType;
+  private Long audioDurationMs;
+  private Long audioStartOffsetMs;
   private Long durationMs;
   private Long eventCount;
   private Long chunkCount;
@@ -94,6 +98,15 @@ public class RecordingSessionEntity {
   public void setEventManifestUrl(String eventManifestUrl) {
     this.eventManifestUrl = eventManifestUrl;
   }
+
+  public String getAudioUrl() { return audioUrl; }
+  public void setAudioUrl(String audioUrl) { this.audioUrl = audioUrl; }
+  public String getAudioMimeType() { return audioMimeType; }
+  public void setAudioMimeType(String audioMimeType) { this.audioMimeType = audioMimeType; }
+  public Long getAudioDurationMs() { return audioDurationMs; }
+  public void setAudioDurationMs(Long audioDurationMs) { this.audioDurationMs = audioDurationMs; }
+  public Long getAudioStartOffsetMs() { return audioStartOffsetMs; }
+  public void setAudioStartOffsetMs(Long audioStartOffsetMs) { this.audioStartOffsetMs = audioStartOffsetMs; }
 
   public Long getDurationMs() {
     return durationMs;

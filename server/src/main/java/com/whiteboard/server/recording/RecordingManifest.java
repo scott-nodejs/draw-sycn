@@ -9,4 +9,8 @@ public class RecordingManifest {
   public long chunkCount;
   public String baselineSnapshotUrl;
   public String eventManifestUrl;
+  public String audioUrl;
+  public String audioMimeType;
+  public long audioDurationMs;
+  public long audioStartOffsetMs;
 }

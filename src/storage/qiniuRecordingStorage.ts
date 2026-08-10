@@ -14,8 +14,8 @@ type QiniuRecordingStorageOptions = {
 
 export function createQiniuRecordingStorage(options: QiniuRecordingStorageOptions): RecordingStorage {
   return {
-    async save(recording) {
-      const uploadPlan = createUploadPlan(recording)
+    async save(recording, audioBlob) {
+      const uploadPlan = createUploadPlan(recording, audioBlob)
       const initRequest: RecordingUploadInitRequest = {
         sessionId: recording.sessionId,
         title: recording.title,
@@ -27,6 +27,7 @@ export function createQiniuRecordingStorage(options: QiniuRecordingStorageOption
           type: part.type,
           sizeBytes: part.sizeBytes,
           chunkIndex: part.chunkIndex,
+          mimeType: part.mimeType,
         })),
       }
 
@@ -35,7 +36,7 @@ export function createQiniuRecordingStorage(options: QiniuRecordingStorageOption
         initRequest,
       )
 
-      const payloads = createPartPayloads(recording)
+      const payloads = createPartPayloads(recording, audioBlob)
       for (const part of initResponse.parts) {
         const payload = payloads.get(part.id)
         if (!payload) {
@@ -52,6 +53,9 @@ export function createQiniuRecordingStorage(options: QiniuRecordingStorageOption
         duration: recording.duration,
         eventCount: recording.eventCount,
         chunkCount: recording.eventManifest?.chunkCount ?? 0,
+        audioMimeType: recording.audio?.mimeType,
+        audioDurationMs: recording.audio?.durationMs,
+        audioStartOffsetMs: recording.audio?.startOffsetMs,
         parts: initResponse.parts.map((part) => ({
           id: part.id,
           objectKey: part.objectKey,
@@ -79,11 +83,12 @@ export function createQiniuRecordingStorage(options: QiniuRecordingStorageOption
   }
 }
 
-function createPartPayloads(recording: RecordingPackage) {
+function createPartPayloads(recording: RecordingPackage, audioBlob?: Blob | null) {
   const payloads = new Map<string, unknown>()
   payloads.set('baseline-snapshot', recording.baselineSnapshot)
   payloads.set('event-manifest', recording.eventManifest ?? null)
   payloads.set('package', recording)
+  if (audioBlob) payloads.set('teacher-audio', audioBlob)
 
   for (const chunk of recording.chunks ?? []) {
     payloads.set(`event-chunk-${chunk.index}`, chunk)
@@ -94,7 +99,7 @@ function createPartPayloads(recording: RecordingPackage) {
 
 async function uploadToQiniu(uploadUrl: string, token: string, key: string, payload: unknown) {
   const formData = new FormData()
-  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' })
+  const blob = payload instanceof Blob ? payload : new Blob([JSON.stringify(payload)], { type: 'application/json' })
   formData.set('token', token)
   formData.set('key', key)
   formData.set('file', blob, key.split('/').pop() ?? 'part.json')

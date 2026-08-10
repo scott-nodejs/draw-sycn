@@ -23,6 +23,18 @@ export type RecordingPackage = {
   eventManifest?: RecordingEventManifest
   chunks?: RecordingEventChunk[]
   keyframes?: RecordingKeyframe[]
+  audio?: RecordingAudioTrack
+}
+
+export type RecordingAudioTrack = {
+  version: 1
+  mimeType: string
+  codec?: string
+  durationMs: number
+  startOffsetMs: number
+  sizeBytes: number
+  objectKey?: string
+  url?: string
 }
 
 export type RecordingManifest = {
@@ -34,6 +46,10 @@ export type RecordingManifest = {
   baselineSnapshotUrl?: string
   eventManifestUrl?: string
   chunkCount?: number
+  audioUrl?: string
+  audioMimeType?: string
+  audioDurationMs?: number
+  audioStartOffsetMs?: number
 }
 
 export type RecordingSaveResult = {
@@ -52,6 +68,7 @@ export type RecordingUploadInitRequest = {
     type: string
     sizeBytes: number
     chunkIndex?: number
+    mimeType?: string
   }>
 }
 
@@ -74,6 +91,9 @@ export type RecordingUploadCompleteRequest = {
   duration: number
   eventCount: number
   chunkCount: number
+  audioMimeType?: string
+  audioDurationMs?: number
+  audioStartOffsetMs?: number
   parts: Array<{
     id: string
     objectKey: string

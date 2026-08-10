@@ -41,7 +41,7 @@ server.on('upgrade', (request, socket, head) => {
 
   const roomId = decodeURIComponent(match[1])
   const role = url.searchParams.get('role') ?? 'viewer'
-  const sessionId = url.searchParams.get('sessionId') ?? randomUUID()
+  const sessionId = url.searchParams.get('appSessionId') ?? randomUUID()
   const isReadonly = role !== 'teacher' && role !== 'assistant'
 
   wss.handleUpgrade(request, socket, head, (ws) => {

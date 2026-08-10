@@ -9,5 +9,8 @@ public class UploadCompleteRequest {
   public long duration;
   public long eventCount;
   public long chunkCount;
+  public String audioMimeType;
+  public long audioDurationMs;
+  public long audioStartOffsetMs;
   public List<UploadedPart> parts;
 }

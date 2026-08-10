@@ -27,6 +27,7 @@ export async function runSaveTask(
   recording: RecordingPackage,
   onChange: (task: SaveTaskSnapshot) => void,
   previousTask?: SaveTaskSnapshot | null,
+  audioBlob?: Blob | null,
 ) {
   const now = new Date().toISOString()
   const runningTask: SaveTaskSnapshot = {
@@ -39,7 +40,7 @@ export async function runSaveTask(
   onChange(runningTask)
 
   try {
-    const result = await storage.save(recording)
+    const result = await storage.save(recording, audioBlob)
     const finishedTask: SaveTaskSnapshot = {
       ...runningTask,
       status: 'succeeded',

@@ -5,4 +5,5 @@ public class UploadPartRequest {
   public String type;
   public long sizeBytes;
   public Integer chunkIndex;
+  public String mimeType;
 }

@@ -4,6 +4,43 @@ This project records tldraw as a baseline snapshot plus an ordered event stream.
 The same event stream can later be written to Qiniu Cloud Kodo for replay or forwarded over
 WebSocket for live viewer screens.
 
+## Audio synchronization
+
+Every new recording contains two synchronized tracks driven by the same monotonic clock:
+
+- the tldraw event track (`events[].timestamp`);
+- the teacher audio track (`audio`).
+
+Audio bytes are stored as a separate WebM/Opus, Ogg/Opus or M4A object. They must never be embedded
+as Base64 in `package.json`. The package contains only metadata:
+
+```json
+{
+  "audio": {
+    "version": 1,
+    "mimeType": "audio/webm;codecs=opus",
+    "codec": "opus",
+    "durationMs": 182436,
+    "startOffsetMs": 7,
+    "sizeBytes": 2189234,
+    "objectKey": "lesson_xxx/teacher-audio.webm",
+    "url": "https://cdn.example.com/lesson_xxx/teacher-audio.webm"
+  }
+}
+```
+
+`startOffsetMs` is the delay between the tldraw master clock start and `MediaRecorder.start()`.
+During playback, audio is the master clock:
+
+```text
+timelineMs = audio.currentTime * 1000 + audio.startOffsetMs
+```
+
+The player applies every tldraw event whose timestamp is less than or equal to `timelineMs`.
+Seeking restores the nearest keyframe, applies subsequent events up to the target time, and sets
+`audio.currentTime = (targetMs - startOffsetMs) / 1000`. Pause and playback rate changes must be
+applied to the audio element; the whiteboard follows its clock.
+
 ## Recording Package
 
 ```json

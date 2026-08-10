@@ -1,6 +1,6 @@
 import type { RecordingPackage, RecordingSaveResult } from '../types'
 
 export type RecordingStorage = {
-  save(recording: RecordingPackage): Promise<RecordingSaveResult>
+  save(recording: RecordingPackage, audioBlob?: Blob | null): Promise<RecordingSaveResult>
   load(source: File | string): Promise<RecordingPackage>
 }

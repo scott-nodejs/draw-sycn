@@ -25,6 +25,29 @@ const server = createServer(async (request, response) => {
 
     const url = new URL(request.url ?? '/', `http://${request.headers.host}`)
 
+    const audioMatch = url.pathname.match(/^\/api\/whiteboard\/recordings\/([^/]+)\/audio$/)
+    if (request.method === 'POST' && audioMatch) {
+      const sessionId = decodeURIComponent(audioMatch[1])
+      const uploaded = await readMultipartFile(request)
+      if (!uploaded.contentType.startsWith('audio/')) throw new Error('Expected an audio upload')
+      const extension = uploaded.contentType.includes('ogg') ? 'ogg' : uploaded.contentType.includes('mp4') ? 'm4a' : 'webm'
+      const sessionDir = join(objectRoot, sessionId)
+      await mkdir(sessionDir, { recursive: true })
+      const fileName = `teacher-audio.${extension}`
+      await writeFile(join(sessionDir, fileName), uploaded.data)
+      sendJson(response, 200, { objectKey: `${sessionId}/${fileName}`, audioUrl: `/api/whiteboard/recordings/${encodeURIComponent(sessionId)}/audio` })
+      return
+    }
+
+    if (request.method === 'GET' && audioMatch) {
+      const sessionId = decodeURIComponent(audioMatch[1])
+      const audio = await findAudioFile(sessionId)
+      if (!audio) { sendJson(response, 404, { message: 'Audio not found' }); return }
+      response.writeHead(200, { 'Content-Type': audio.contentType, 'Accept-Ranges': 'bytes', 'Content-Length': audio.data.length })
+      response.end(audio.data)
+      return
+    }
+
     if (request.method === 'POST' && url.pathname === '/api/whiteboard/recordings') {
       const recording = await readJsonBody(request)
       validateRecording(recording)
@@ -210,6 +233,39 @@ async function readJsonBody(request) {
   }
 
   return JSON.parse(Buffer.concat(chunks).toString('utf8'))
+}
+
+async function readMultipartFile(request) {
+  const contentType = request.headers['content-type'] ?? ''
+  const boundaryMatch = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/)
+  if (!boundaryMatch) throw new Error('Missing multipart boundary')
+  const boundary = Buffer.from(`--${boundaryMatch[1] ?? boundaryMatch[2]}`)
+  const chunks = []
+  for await (const chunk of request) chunks.push(chunk)
+  const body = Buffer.concat(chunks)
+  const fileHeader = Buffer.from('name="file"')
+  const fieldIndex = body.indexOf(fileHeader)
+  if (fieldIndex < 0) throw new Error('Missing audio file field')
+  const headerEnd = body.indexOf(Buffer.from('\r\n\r\n'), fieldIndex)
+  if (headerEnd < 0) throw new Error('Invalid multipart file header')
+  const nextBoundary = body.indexOf(boundary, headerEnd + 4)
+  if (nextBoundary < 0) throw new Error('Invalid multipart file body')
+  const header = body.subarray(fieldIndex, headerEnd).toString('utf8')
+  const partType = header.match(/Content-Type:\s*([^\r\n]+)/i)?.[1]?.trim() ?? 'application/octet-stream'
+  return { contentType: partType, data: body.subarray(headerEnd + 4, Math.max(headerEnd + 4, nextBoundary - 2)) }
+}
+
+async function findAudioFile(sessionId) {
+  for (const extension of ['webm', 'ogg', 'm4a']) {
+    try {
+      const data = await readFile(join(objectRoot, sessionId, `teacher-audio.${extension}`))
+      const contentType = extension === 'ogg' ? 'audio/ogg' : extension === 'm4a' ? 'audio/mp4' : 'audio/webm'
+      return { data, contentType }
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error
+    }
+  }
+  return null
 }
 
 function sendJson(response, status, body) {

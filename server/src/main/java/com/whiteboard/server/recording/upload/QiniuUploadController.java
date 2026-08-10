@@ -64,6 +64,12 @@ public class QiniuUploadController {
     manifest.chunkCount = request.chunkCount;
     manifest.baselineSnapshotUrl = publicUrl(qiniu, "whiteboard/" + sessionId + "/baseline-snapshot.json");
     manifest.eventManifestUrl = publicUrl(qiniu, "whiteboard/" + sessionId + "/event-manifest.json");
+    if (request.parts != null) {
+      request.parts.stream().filter(part -> "teacher-audio".equals(part.id)).findFirst().ifPresent(part -> manifest.audioUrl = publicUrl(qiniu, part.objectKey));
+    }
+    manifest.audioMimeType = request.audioMimeType == null ? "" : request.audioMimeType;
+    manifest.audioDurationMs = request.audioDurationMs;
+    manifest.audioStartOffsetMs = request.audioStartOffsetMs;
     recordingService.upsertRecordingSession(manifest, "qiniu");
     return manifest;
   }
@@ -103,6 +109,12 @@ public class QiniuUploadController {
     if ("event-chunk".equals(part.type)) {
       int index = part.chunkIndex == null ? 0 : part.chunkIndex;
       return String.format("events-%06d.json", index);
+    }
+
+    if ("audio".equals(part.type)) {
+      if (part.mimeType != null && part.mimeType.contains("ogg")) return "teacher-audio.ogg";
+      if (part.mimeType != null && part.mimeType.contains("mp4")) return "teacher-audio.m4a";
+      return "teacher-audio.webm";
     }
 
     return "package.json";
