@@ -2,10 +2,16 @@ package com.whiteboard.server.teaching;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.CacheControl;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.core.io.Resource;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -27,27 +33,46 @@ public class TeachingPlatformController {
     this.service = service;
   }
 
+  @GetMapping("/batch-upload-options")
+  public Map<String, Object> batchUploadOptions() {
+    return service.batchUploadOptions();
+  }
+
   @GetMapping("/papers")
   public List<Map<String, Object>> listPapers(
-      @RequestHeader(value = "X-Organization-Id", defaultValue = "") String organizationId) {
-    return service.listPapers(organizationId);
+      @RequestHeader(value = "X-Organization-Id", defaultValue = "") String organizationId,
+      @RequestHeader("X-User-Id") String userId) {
+    return service.listPapers(organizationId, userId);
   }
 
   @PostMapping(value = "/papers", consumes = "multipart/form-data")
   @ResponseStatus(HttpStatus.CREATED)
   public Map<String, Object> createPaper(
-      @RequestParam MultipartFile file,
+      @RequestParam("file") MultipartFile[] files,
       @RequestParam String title,
       @RequestParam String subject,
       @RequestParam String grade,
       @RequestHeader(value = "X-Organization-Id", defaultValue = "") String organizationId,
       @RequestHeader("X-User-Id") String creatorId) throws IOException {
-    return service.createPaper(file, title, subject, grade, organizationId, creatorId);
+    return service.createPaper(Arrays.asList(files), title, subject, grade, organizationId, creatorId);
+  }
+
+  @DeleteMapping("/papers/{paperId}")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void deletePaper(@PathVariable String paperId, @RequestHeader("X-User-Id") String userId) throws IOException {
+    service.deletePaper(paperId, userId);
+  }
+
+  @GetMapping("/questions")
+  public List<Map<String, Object>> listAllQuestions(
+      @RequestHeader(value = "X-Organization-Id", defaultValue = "") String organizationId,
+      @RequestHeader("X-User-Id") String userId) {
+    return service.listAllQuestions(organizationId, userId);
   }
 
   @GetMapping("/papers/{paperId}/questions")
-  public List<Map<String, Object>> listQuestions(@PathVariable String paperId) {
-    return service.listQuestions(paperId);
+  public List<Map<String, Object>> listQuestions(@PathVariable String paperId, @RequestHeader("X-User-Id") String userId) {
+    return service.listQuestions(paperId, userId);
   }
 
   @PatchMapping("/questions/{questionId}")
@@ -56,7 +81,59 @@ public class TeachingPlatformController {
       @RequestBody JsonNode patch,
       @RequestHeader("X-User-Id") String reviewerId) {
     // reviewerId is required so the authentication layer cannot be bypassed.
-    return service.updateQuestion(questionId, patch);
+    return service.updateQuestion(questionId, patch, reviewerId);
+  }
+
+  @PutMapping("/questions/{questionId}/presentation")
+  public Map<String, Object> updateQuestionPresentation(
+      @PathVariable String questionId,
+      @RequestBody JsonNode input,
+      @RequestHeader("X-User-Id") String reviewerId) {
+    return service.updateQuestionPresentation(questionId, input.path("presentationLayout"), reviewerId);
+  }
+
+  @PostMapping("/questions/{questionId}/reprocess")
+  @ResponseStatus(HttpStatus.ACCEPTED)
+  public Map<String, Object> reprocessQuestion(
+      @PathVariable String questionId,
+      @RequestBody JsonNode input,
+      @RequestHeader("X-User-Id") String reviewerId) {
+    return service.reprocessQuestion(questionId, input.path("sourceRegions"), reviewerId);
+  }
+
+  @GetMapping("/questions/{questionId}/reprocess/{jobId}")
+  public Map<String, Object> getQuestionReprocessStatus(
+      @PathVariable String questionId,
+      @PathVariable String jobId,
+      @RequestHeader("X-User-Id") String userId) {
+    return service.getQuestionReprocessStatus(questionId, jobId, userId);
+  }
+
+  @GetMapping(value = "/questions/{questionId}/crops/{assetIndex}", produces = MediaType.IMAGE_PNG_VALUE)
+  public ResponseEntity<Resource> getQuestionCrop(
+      @PathVariable String questionId,
+      @PathVariable int assetIndex,
+      @RequestHeader("X-User-Id") String userId) {
+    return ResponseEntity.ok().cacheControl(CacheControl.noCache()).contentType(MediaType.IMAGE_PNG)
+      .body(service.getQuestionCrop(questionId, assetIndex, userId));
+  }
+
+  @GetMapping(value = "/questions/{questionId}/figures/{assetIndex}", produces = MediaType.IMAGE_PNG_VALUE)
+  public ResponseEntity<Resource> getQuestionFigure(
+      @PathVariable String questionId,
+      @PathVariable int assetIndex,
+      @RequestHeader("X-User-Id") String userId) {
+    return ResponseEntity.ok().cacheControl(CacheControl.noCache()).contentType(MediaType.IMAGE_PNG)
+      .body(service.getQuestionFigure(questionId, assetIndex, userId));
+  }
+
+  @GetMapping(value = "/papers/{paperId}/pages/{pageNumber}", produces = MediaType.IMAGE_PNG_VALUE)
+  public ResponseEntity<Resource> getPaperPage(
+      @PathVariable String paperId,
+      @PathVariable int pageNumber,
+      @RequestHeader("X-User-Id") String userId) {
+    return ResponseEntity.ok().cacheControl(CacheControl.noCache()).contentType(MediaType.IMAGE_PNG)
+      .body(service.getPaperPage(paperId, pageNumber, userId));
   }
 
   @GetMapping("/teaching-assets")

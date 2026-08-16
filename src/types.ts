@@ -24,6 +24,16 @@ export type RecordingPackage = {
   chunks?: RecordingEventChunk[]
   keyframes?: RecordingKeyframe[]
   audio?: RecordingAudioTrack
+  paperId?: string
+  questionIds?: string[]
+  questionSegments?: RecordingQuestionSegment[]
+}
+
+export type RecordingQuestionSegment = {
+  questionId: string
+  questionNumber: number
+  startMs: number
+  endMs: number
 }
 
 export type RecordingAudioTrack = {
@@ -94,6 +104,9 @@ export type RecordingUploadCompleteRequest = {
   audioMimeType?: string
   audioDurationMs?: number
   audioStartOffsetMs?: number
+  paperId?: string
+  questionIds?: string[]
+  questionSegments?: RecordingQuestionSegment[]
   parts: Array<{
     id: string
     objectKey: string

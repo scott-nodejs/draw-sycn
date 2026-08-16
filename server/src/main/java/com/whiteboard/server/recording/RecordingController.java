@@ -17,6 +17,7 @@ import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
 import java.nio.file.Path;
 import java.util.Map;
+import java.net.URI;
 
 @RestController
 @RequestMapping("/api/whiteboard/recordings")
@@ -59,7 +60,11 @@ public class RecordingController {
   }
 
   @GetMapping("/{sessionId}/audio")
-  public ResponseEntity<Resource> loadAudio(@PathVariable String sessionId) throws Exception {
+  public ResponseEntity<?> loadAudio(@PathVariable String sessionId) throws Exception {
+    String qiniuUrl = recordingService.getQiniuAudioUrl(sessionId);
+    if (qiniuUrl != null) {
+      return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(qiniuUrl)).build();
+    }
     Path path = recordingService.getAudioPath(sessionId);
     if (path == null) return ResponseEntity.notFound().build();
     String filename = path.getFileName().toString();

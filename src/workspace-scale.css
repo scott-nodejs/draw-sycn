@@ -1,0 +1,41 @@
+/* Readability scale for the teacher workspace content area. */
+.product-main .page-header h1 { font-size: 28px; }
+.product-main .page-header p { font-size: 14px; line-height: 1.65; }
+.product-main .eyebrow { font-size: 12px; }
+
+.product-main .metric-card span { font-size: 13px; }
+.product-main .metric-card strong { font-size: 26px; }
+.product-main .metric-card small { font-size: 12px; line-height: 1.45; }
+
+.product-main .card-toolbar h2 { font-size: 16px; }
+.product-main .card-toolbar span { font-size: 12px; }
+.product-main .data-table th { font-size: 12px; }
+.product-main .data-table td { font-size: 14px; }
+.product-main .data-table td small,
+.product-main .product-name-cell small { font-size: 12px; }
+.product-main .title-link strong,
+.product-main .asset-title strong,
+.product-main .product-name-cell strong { font-size: 14px; }
+
+.product-main .status-badge { font-size: 12px; }
+.product-main .text-button { font-size: 13px; }
+.product-main .button { font-size: 13px; }
+.product-main .muted { font-size: 13px; }
+.product-main .field-label { font-size: 13px; }
+.product-main .text-input { min-height: 41px; font-size: 13px; }
+.product-main .search-field input { font-size: 13px; }
+.upload-file-summary { display: grid; gap: 5px; max-height: 110px; overflow: auto; margin: -4px 0 15px; padding: 11px 13px; border: 1px solid #e1e6e2; border-radius: 9px; background: #f8faf8; color: #59665e; font-size: 12px; }
+.upload-file-summary small { color: #879189; }
+.paper-failed { display: grid; gap: 5px; max-width: 230px; }
+.paper-failed small { overflow: hidden; color: #a14c37; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+
+.product-main .question-card h2,
+.product-main .teacher-task-card h2 { font-size: 17px; }
+.product-main .question-card p,
+.product-main .teacher-task-card p,
+.product-main .control-note { font-size: 13px; line-height: 1.65; }
+
+@media (max-width: 760px) {
+  .product-main .page-header h1 { font-size: 25px; }
+  .product-main .data-table td { font-size: 13px; }
+}

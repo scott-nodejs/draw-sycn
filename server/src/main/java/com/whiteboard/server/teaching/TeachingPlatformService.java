@@ -3,8 +3,11 @@ package com.whiteboard.server.teaching;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.whiteboard.server.config.WhiteboardProperties;
+import com.whiteboard.server.paperprocessing.QuestionReprocessingService;
 import java.io.IOException;
+import java.io.InputStream;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,8 +24,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.Comparator;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.http.HttpStatus;
+import org.springframework.core.io.PathResource;
+import org.springframework.core.io.Resource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
@@ -38,81 +44,323 @@ public class TeachingPlatformService {
   private final JdbcTemplate jdbc;
   private final ObjectMapper objectMapper;
   private final WhiteboardProperties properties;
+  private final QuestionReprocessingService questionReprocessing;
 
-  public TeachingPlatformService(JdbcTemplate jdbc, ObjectMapper objectMapper, WhiteboardProperties properties) {
+  public TeachingPlatformService(JdbcTemplate jdbc, ObjectMapper objectMapper, WhiteboardProperties properties, QuestionReprocessingService questionReprocessing) {
     this.jdbc = jdbc;
     this.objectMapper = objectMapper;
     this.properties = properties;
+    this.questionReprocessing = questionReprocessing;
   }
 
-  public List<Map<String, Object>> listPapers(String organizationId) {
+  public List<Map<String, Object>> listPapers(String organizationId, String userId) {
     String sql = "SELECT id, title, subject, grade, source, page_count, question_count, reviewed_count, " +
-      "taught_count, progress, status, created_at FROM teaching_paper " +
-      "WHERE (? = '' OR organization_id = ?) ORDER BY created_at DESC";
-    return jdbc.query(sql, (rs, rowNum) -> paperRow(rs), safe(organizationId), safe(organizationId));
+      "taught_count, progress, CASE WHEN question_count>0 AND reviewed_count>=question_count THEN 'ready' ELSE status END status, created_at FROM teaching_paper " +
+      "WHERE source <> '试题导入' AND ((? <> '' AND organization_id = ?) OR (? = '' AND creator_id = ?)) ORDER BY created_at DESC";
+    return jdbc.query(sql, (rs, rowNum) -> paperRow(rs), safe(organizationId), safe(organizationId), safe(organizationId), safe(userId));
+  }
+
+  public Map<String, Object> batchUploadOptions() {
+    Map<String, Object> options = new LinkedHashMap<>();
+    options.put("grades", Arrays.asList("小学一年级", "小学二年级", "小学三年级", "小学四年级", "小学五年级", "小学六年级", "初一", "初二", "初三", "高一", "高二", "高三"));
+    options.put("subjects", Arrays.asList("语文", "数学", "英语", "物理", "化学", "生物", "政治", "历史", "地理", "科学"));
+    options.put("defaultGrade", "高三");
+    options.put("defaultSubject", "数学");
+    return options;
   }
 
   @Transactional
-  public Map<String, Object> createPaper(MultipartFile file, String title, String subject, String grade,
-      String organizationId, String creatorId) throws IOException {
-    if (file == null || file.isEmpty()) throw badRequest("PDF 文件不能为空");
-    String contentType = file.getContentType();
-    if (contentType != null && !"application/pdf".equalsIgnoreCase(contentType)) throw badRequest("仅支持 PDF 文件");
-    if (file.getSize() > 100L * 1024L * 1024L) throw badRequest("PDF 文件不能超过 100 MB");
+  public void deletePaper(String paperId, String userId) throws IOException {
+    assertPaperOwner(paperId, userId);
+    Integer taught = jdbc.queryForObject("SELECT GREATEST(COALESCE((SELECT taught_count FROM teaching_paper WHERE id=?),0), COALESCE((SELECT COUNT(*) FROM teaching_question WHERE paper_id=? AND teaching_status='recorded'),0))", Integer.class, paperId, paperId);
+    if (taught != null && taught > 0) throw new ResponseStatusException(HttpStatus.CONFLICT, "批次中存在已讲解题目，不能删除");
+    String manifest = jdbc.queryForObject("SELECT pdf_object_key FROM teaching_paper WHERE id=?", String.class, paperId);
+    List<String> questionIds = jdbc.query("SELECT id FROM teaching_question WHERE paper_id=?", (rs, rowNum) -> rs.getString(1), paperId);
+    if (!questionIds.isEmpty()) {
+      String placeholders = String.join(",", Collections.nCopies(questionIds.size(), "?"));
+      Object[] ids = questionIds.toArray();
+      jdbc.update("DELETE FROM learning_product_question WHERE question_id IN (" + placeholders + ")", ids);
+      jdbc.update("DELETE FROM question_revision WHERE question_id IN (" + placeholders + ")", ids);
+    }
+    jdbc.update("DELETE FROM question_reprocess_job WHERE paper_id=?", paperId);
+    jdbc.update("DELETE FROM teaching_question WHERE paper_id=?", paperId);
+    jdbc.update("DELETE FROM paper_ocr_result WHERE paper_id=?", paperId);
+    jdbc.update("DELETE FROM paper_page WHERE paper_id=?", paperId);
+    jdbc.update("DELETE FROM teaching_parse_job WHERE paper_id=?", paperId);
+    jdbc.update("UPDATE learning_product SET paper_id=NULL WHERE paper_id=?", paperId);
+    jdbc.update("DELETE FROM teaching_paper WHERE id=?", paperId);
+    deletePaperDirectory(manifest, paperId);
+  }
 
-    String id = newId("paper");
+  private void deletePaperDirectory(String manifest, String paperId) throws IOException {
+    if (manifest == null || manifest.trim().isEmpty()) return;
+    Path storageRoot = Paths.get(properties.getStorageRoot()).toAbsolutePath().normalize();
+    Path papersRoot = storageRoot.resolve("papers").normalize();
+    Path directory = Paths.get(manifest).toAbsolutePath().normalize().getParent();
+    if (directory == null || !directory.startsWith(papersRoot) || !paperId.equals(directory.getFileName().toString()))
+      throw new IOException("批次存储目录校验失败");
+    if (!Files.exists(directory)) return;
+    try (java.util.stream.Stream<Path> paths = Files.walk(directory)) {
+      for (Path path : (Iterable<Path>) paths.sorted(Comparator.reverseOrder())::iterator) Files.deleteIfExists(path);
+    }
+  }
+
+  @Transactional
+  public Map<String, Object> createPaper(List<MultipartFile> files, String title, String subject, String grade,
+      String organizationId, String creatorId) throws IOException {
+    return createDocumentBatch(files, title, subject, grade, organizationId, creatorId, "教师上传");
+  }
+
+  private Map<String, Object> createDocumentBatch(List<MultipartFile> files, String title, String subject, String grade,
+      String organizationId, String creatorId, String sourceType) throws IOException {
+    if (files == null || files.isEmpty() || files.stream().allMatch(MultipartFile::isEmpty)) throw badRequest("请选择 PDF 或图片文件");
+    files = new ArrayList<>(files);
+    files.removeIf(MultipartFile::isEmpty);
+    if (files.size() > 30) throw badRequest("图片试卷最多支持 30 张");
+    boolean hasPdf = files.stream().anyMatch(this::isPdf);
+    boolean hasImage = files.stream().anyMatch(this::isImage);
+    if (files.stream().anyMatch(file -> !isPdf(file) && !isImage(file))) throw badRequest("仅支持 PDF、JPG、PNG、WEBP 文件");
+    if (hasPdf && (hasImage || files.size() > 1)) throw badRequest("PDF 与图片不能混合上传，且每次只能上传一个 PDF");
+    long totalSize = files.stream().mapToLong(MultipartFile::getSize).sum();
+    if (totalSize > 100L * 1024L * 1024L) throw badRequest("上传文件总大小不能超过 100 MB");
+
+    String id = newId("试题导入".equals(sourceType) ? "questionbatch" : "paper");
     Path directory = Paths.get(properties.getStorageRoot(), "papers", id).normalize();
     Files.createDirectories(directory);
-    Path pdfPath = directory.resolve("original.pdf").normalize();
-    if (!pdfPath.startsWith(directory)) throw badRequest("非法文件路径");
-    Files.copy(file.getInputStream(), pdfPath, StandardCopyOption.REPLACE_EXISTING);
+    List<Map<String, Object>> sources = new ArrayList<>();
+    for (int index = 0; index < files.size(); index++) {
+      MultipartFile file = files.get(index);
+      String extension = isPdf(file) ? "pdf" : imageExtension(file);
+      String storedName = isPdf(file) ? "original.pdf" : String.format("page-%03d.%s", index + 1, extension);
+      Path sourcePath = directory.resolve(storedName).normalize();
+      if (!sourcePath.startsWith(directory)) throw badRequest("非法文件路径");
+      try (InputStream input = file.getInputStream()) {
+        Files.copy(input, sourcePath, StandardCopyOption.REPLACE_EXISTING);
+      }
+      Map<String, Object> source = new LinkedHashMap<>(); source.put("name", storedName); source.put("originalName", file.getOriginalFilename()); source.put("contentType", file.getContentType()); source.put("size", file.getSize()); sources.add(source);
+    }
+    Path manifestPath = directory.resolve("source-manifest.json");
+    objectMapper.writeValue(manifestPath.toFile(), sources);
 
     LocalDateTime now = LocalDateTime.now();
     jdbc.update("INSERT INTO teaching_paper (id, organization_id, creator_id, title, subject, grade, source, " +
         "pdf_object_key, status, progress, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'processing', 0, ?, ?)",
-      id, safe(organizationId), safe(creatorId), required(title, "试卷名称"), required(subject, "学科"),
-      required(grade, "年级"), "教师上传", pdfPath.toString(), Timestamp.valueOf(now), Timestamp.valueOf(now));
+      id, safe(organizationId), safe(creatorId), required(title, "导入批次名称"), required(subject, "学科"),
+      required(grade, "年级"), sourceType, manifestPath.toString(), Timestamp.valueOf(now), Timestamp.valueOf(now));
     jdbc.update("INSERT INTO teaching_parse_job (id, paper_id, status, progress, created_at, updated_at) " +
       "VALUES (?, ?, 'queued', 0, ?, ?)", newId("parse"), id, Timestamp.valueOf(now), Timestamp.valueOf(now));
+    for (int index = 0; index < sources.size(); index++) {
+      jdbc.update("INSERT INTO paper_page (id,paper_id,page_number,source_object_key,status,created_at,updated_at) VALUES (?,?,?,?, 'uploaded',?,?)",
+        newId("page"), id, index + 1, directory.resolve(String.valueOf(sources.get(index).get("name"))).toString(), Timestamp.valueOf(now), Timestamp.valueOf(now));
+    }
     return getPaper(id);
+  }
+
+  private boolean isPdf(MultipartFile file) {
+    String name = safe(file.getOriginalFilename()).toLowerCase();
+    return "application/pdf".equalsIgnoreCase(file.getContentType()) || name.endsWith(".pdf");
+  }
+
+  private boolean isImage(MultipartFile file) {
+    String type = safe(file.getContentType()).toLowerCase();
+    String name = safe(file.getOriginalFilename()).toLowerCase();
+    return type.startsWith("image/") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png") || name.endsWith(".webp");
+  }
+
+  private String imageExtension(MultipartFile file) {
+    String name = safe(file.getOriginalFilename()).toLowerCase();
+    if (name.endsWith(".png")) return "png";
+    if (name.endsWith(".webp")) return "webp";
+    return "jpg";
   }
 
   public Map<String, Object> getPaper(String id) {
     try {
       return jdbc.queryForObject("SELECT id, title, subject, grade, source, page_count, question_count, " +
-        "reviewed_count, taught_count, progress, status, created_at FROM teaching_paper WHERE id = ?", (rs, n) -> paperRow(rs), id);
+        "reviewed_count, taught_count, progress, CASE WHEN question_count>0 AND reviewed_count>=question_count THEN 'ready' ELSE status END status, created_at FROM teaching_paper WHERE id = ?", (rs, n) -> paperRow(rs), id);
     } catch (EmptyResultDataAccessException error) {
       throw notFound("试卷不存在");
     }
   }
 
-  public List<Map<String, Object>> listQuestions(String paperId) {
+  public List<Map<String, Object>> listQuestions(String paperId, String userId) {
+    assertPaperOwner(paperId, userId);
     return jdbc.query("SELECT id, paper_id, question_number, question_type, stem, options_json, answer, analysis, " +
-      "points, confidence, review_status, teaching_status, version FROM teaching_question WHERE paper_id = ? " +
+      "points, confidence, difficulty, review_status, teaching_status, crop_regions_json, version FROM teaching_question WHERE paper_id = ? " +
       "ORDER BY question_number", (rs, rowNum) -> questionRow(rs), paperId);
   }
 
+  public List<Map<String, Object>> listAllQuestions(String organizationId, String userId) {
+    String sql = "SELECT q.id,q.paper_id,q.question_number,q.question_type,q.stem,q.options_json,q.answer,q.analysis," +
+      "q.points,q.confidence,q.difficulty,q.review_status,q.teaching_status,q.crop_regions_json,q.version," +
+      "p.title source_title,p.subject source_subject,p.grade source_grade,p.source source_type FROM teaching_question q " +
+      "JOIN teaching_paper p ON p.id=q.paper_id WHERE q.review_status='confirmed' AND ((? <> '' AND p.organization_id=?) OR (? = '' AND p.creator_id=?)) " +
+      "ORDER BY q.created_at DESC,q.question_number";
+    return jdbc.query(sql, (rs, rowNum) -> { Map<String, Object> row = questionRow(rs); row.put("sourceTitle", rs.getString("source_title")); row.put("sourceSubject", rs.getString("source_subject")); row.put("sourceGrade", rs.getString("source_grade")); row.put("sourceType", rs.getString("source_type")); return row; },
+      safe(organizationId), safe(organizationId), safe(organizationId), safe(userId));
+  }
+
   @Transactional
-  public Map<String, Object> updateQuestion(String id, JsonNode patch) {
+  public Map<String, Object> updateQuestion(String id, JsonNode patch, String reviewerId) {
     Map<String, Object> current = getQuestion(id);
+    assertPaperOwner(stringValue(current.get("paperId")), reviewerId);
     long version = longValue(current.get("version"));
     if (patch.has("version") && patch.path("version").asLong() != version) {
       throw new ResponseStatusException(HttpStatus.CONFLICT, "题目已被其他用户修改，请刷新后重试");
     }
     String type = text(patch, "type", stringValue(current.get("type")));
+    if (!Arrays.asList("选择题", "填空题", "解答题").contains(type)) throw badRequest("不支持的题目类型");
     String stem = text(patch, "stem", stringValue(current.get("stem")));
     String answer = text(patch, "answer", stringValue(current.get("answer")));
     String analysis = text(patch, "analysis", stringValue(current.get("analysis")));
+    String difficulty = text(patch, "difficulty", stringValue(current.get("difficulty")));
+    if (!Arrays.asList("高", "中", "低").contains(difficulty)) throw badRequest("难度只能是高、中、低");
     int number = integer(patch, "number", integerValue(current.get("number")));
     BigDecimal points = decimal(patch, "points", decimalValue(current.get("points")));
     String optionsJson = patch.has("options") ? json(patch.get("options")) : json(current.get("options"));
+    String cropRegionsJson = jdbc.queryForObject("SELECT crop_regions_json FROM teaching_question WHERE id=?", String.class, id);
+    if (patch.has("sourceRegions") || patch.has("presentationLayout")) {
+      JsonNode regions = patch.path("sourceRegions");
+      if (patch.has("sourceRegions")) validateSourceRegions(regions);
+      try {
+        JsonNode parsed = objectMapper.readTree(cropRegionsJson);
+        ObjectNode cropData = parsed instanceof ObjectNode ? (ObjectNode) parsed : objectMapper.createObjectNode();
+        if (patch.has("sourceRegions")) cropData.set("regions", regions.deepCopy());
+        if (patch.has("presentationLayout")) cropData.set("presentationLayout", patch.path("presentationLayout").deepCopy());
+        cropRegionsJson = objectMapper.writeValueAsString(cropData);
+      } catch (JsonProcessingException error) {
+        throw badRequest("题目区域数据无效");
+      }
+    }
     int changed = jdbc.update("UPDATE teaching_question SET question_number=?, question_type=?, stem=?, options_json=?, " +
-      "answer=?, analysis=?, points=?, review_status='confirmed', version=version+1, updated_at=? WHERE id=? AND version=?",
-      number, type, required(stem, "题目正文"), optionsJson, answer, analysis, points,
+      "answer=?, analysis=?, points=?, difficulty=?, review_status='confirmed', version=version+1, updated_at=? WHERE id=? AND version=?",
+      number, type, required(stem, "题目正文"), optionsJson, answer, analysis, points, difficulty,
       Timestamp.valueOf(LocalDateTime.now()), id, version);
     if (changed == 0) throw new ResponseStatusException(HttpStatus.CONFLICT, "题目已被其他用户修改");
+    if (patch.has("sourceRegions") || patch.has("presentationLayout")) {
+      jdbc.update("UPDATE teaching_question SET crop_regions_json=? WHERE id=?", cropRegionsJson, id);
+    }
     refreshPaperCounts(stringValue(current.get("paperId")));
-    return getQuestion(id);
+    Map<String, Object> updated = getQuestion(id);
+    jdbc.update("INSERT INTO question_revision (id,question_id,version,snapshot_json,change_source,changed_by,change_reason,created_at) VALUES (?,?,?,?, 'TEACHER_EDIT',?,?,?)",
+      newId("revision"), id, longValue(updated.get("version")), json(updated), safe(reviewerId), patch.path("changeReason").asText("老师校对确认"), Timestamp.valueOf(LocalDateTime.now()));
+    return updated;
+  }
+
+  private void validateSourceRegions(JsonNode regions) {
+    if (!regions.isArray() || regions.size() == 0) throw badRequest("题目区域不能为空");
+    for (JsonNode region : regions) {
+      int page = region.path("pageNumber").asInt(); int x0 = region.path("x0").asInt(-1); int y0 = region.path("y0").asInt(-1);
+      int x1 = region.path("x1").asInt(-1); int y1 = region.path("y1").asInt(-1);
+      if (page <= 0 || x0 < 0 || y0 < 0 || x1 > 1000 || y1 > 1000 || x1 <= x0 || y1 <= y0) throw badRequest("题目区域坐标无效");
+    }
+  }
+
+  @Transactional
+  public Map<String, Object> updateQuestionPresentation(String id, JsonNode layout, String reviewerId) {
+    Map<String, Object> current = getQuestion(id); assertPaperOwner(stringValue(current.get("paperId")), reviewerId);
+    if (!layout.isObject() || !layout.path("blocks").isArray()) throw badRequest("试题版式数据无效");
+    String cropJson = jdbc.queryForObject("SELECT crop_regions_json FROM teaching_question WHERE id=?", String.class, id);
+    try {
+      JsonNode parsed = objectMapper.readTree(cropJson); ObjectNode cropData = parsed instanceof ObjectNode ? (ObjectNode) parsed : objectMapper.createObjectNode();
+      cropData.set("presentationLayout", layout.deepCopy());
+      jdbc.update("UPDATE teaching_question SET crop_regions_json=?,version=version+1,updated_at=? WHERE id=?", objectMapper.writeValueAsString(cropData), Timestamp.valueOf(LocalDateTime.now()), id);
+      Map<String, Object> updated = getQuestion(id);
+      jdbc.update("INSERT INTO question_revision (id,question_id,version,snapshot_json,change_source,changed_by,change_reason,created_at) VALUES (?,?,?,?, 'TEACHER_EDIT',?,?,?)",
+        newId("revision"), id, longValue(updated.get("version")), json(updated), safe(reviewerId), "调整试题展示版式", Timestamp.valueOf(LocalDateTime.now()));
+      return updated;
+    } catch (JsonProcessingException error) { throw badRequest("试题版式数据无效"); }
+  }
+
+  @Transactional
+  public Map<String, Object> reprocessQuestion(String id, JsonNode regions, String reviewerId) {
+    Map<String, Object> current = getQuestion(id);
+    String paperId = stringValue(current.get("paperId"));
+    assertPaperOwner(paperId, reviewerId);
+    validateSourceRegions(regions);
+    try {
+      String cropRegionsJson = jdbc.queryForObject("SELECT crop_regions_json FROM teaching_question WHERE id=?", String.class, id);
+      JsonNode parsed = objectMapper.readTree(cropRegionsJson);
+      ObjectNode cropData = parsed instanceof ObjectNode ? (ObjectNode) parsed : objectMapper.createObjectNode();
+      cropData.set("regions", regions.deepCopy());
+      jdbc.update("UPDATE teaching_question SET crop_regions_json=?,version=version+1,updated_at=? WHERE id=?",
+        objectMapper.writeValueAsString(cropData), Timestamp.valueOf(LocalDateTime.now()), id);
+      Map<String, Object> updated = getQuestion(id);
+      jdbc.update("INSERT INTO question_revision (id,question_id,version,snapshot_json,change_source,changed_by,change_reason,created_at) VALUES (?,?,?,?, 'TEACHER_REGION_EDIT',?,?,?)",
+        newId("revision"), id, longValue(updated.get("version")), json(updated), safe(reviewerId), "人工调整题目识别区域", Timestamp.valueOf(LocalDateTime.now()));
+      String jobId = questionReprocessing.enqueue(id, paperId, regions);
+      updated.put("reprocessJobId", jobId);
+      return updated;
+    } catch (JsonProcessingException error) {
+      throw badRequest("题目区域数据无效");
+    }
+  }
+
+  public Map<String, Object> getQuestionReprocessStatus(String questionId, String jobId, String userId) {
+    Map<String, Object> question = getQuestion(questionId);
+    assertPaperOwner(stringValue(question.get("paperId")), userId);
+    Map<String, Object> status = jdbc.queryForObject(
+      "SELECT id,status,stage,error_code,error_message,updated_at FROM question_reprocess_job WHERE id=? AND question_id=?",
+      (rs, n) -> { Map<String, Object> row = new LinkedHashMap<>(); row.put("jobId", rs.getString("id")); row.put("status", rs.getString("status")); row.put("stage", rs.getString("stage")); row.put("errorCode", rs.getString("error_code")); row.put("errorMessage", rs.getString("error_message")); row.put("updatedAt", rs.getTimestamp("updated_at")); return row; },
+      jobId, questionId);
+    if ("done".equals(status.get("status"))) status.put("question", getQuestion(questionId));
+    return status;
+  }
+
+  public Resource getQuestionCrop(String questionId, int assetIndex, String userId) {
+    return getQuestionImageAsset(questionId, assetIndex, userId, "assets");
+  }
+
+  public Resource getQuestionFigure(String questionId, int assetIndex, String userId) {
+    return getQuestionImageAsset(questionId, assetIndex, userId, "figureAssets");
+  }
+
+  private Resource getQuestionImageAsset(String questionId, int assetIndex, String userId, String assetField) {
+    Map<String, Object> question = getQuestion(questionId); assertQuestionImageViewer(questionId, stringValue(question.get("paperId")), userId);
+    String cropJson = jdbc.queryForObject("SELECT crop_regions_json FROM teaching_question WHERE id=?", String.class, questionId);
+    try {
+      JsonNode assets = objectMapper.readTree(cropJson).path(assetField);
+      if (!assets.isArray() || assetIndex < 0 || assetIndex >= assets.size()) throw notFound("题目裁图不存在");
+      Path root = Paths.get(properties.getStorageRoot()).toAbsolutePath().normalize();
+      Path path = Paths.get(assets.get(assetIndex).path("objectKey").asText()).toAbsolutePath().normalize();
+      if (!path.startsWith(root) || !Files.isRegularFile(path)) throw notFound("题目裁图不存在");
+      return new PathResource(path);
+    } catch (JsonProcessingException error) { throw notFound("题目裁图数据损坏"); }
+  }
+
+  private void assertQuestionImageViewer(String questionId, String paperId, String userId) {
+    Integer allowed = jdbc.queryForObject(
+      "SELECT COUNT(*) FROM teaching_paper p WHERE p.id=? AND (p.creator_id=? OR EXISTS (SELECT 1 FROM class_sync_room r JOIN class_sync_room_member m ON m.room_id=r.id WHERE r.current_question_id=? AND r.status='open' AND m.student_id=?))",
+      Integer.class, paperId, userId, questionId, userId);
+    if (allowed == null || allowed == 0) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "无权查看题目图片");
+  }
+
+  public Resource getPaperPage(String paperId, int pageNumber, String userId) {
+    assertPaperOwner(paperId, userId);
+    try {
+      jdbc.queryForObject(
+        "SELECT normalized_object_key FROM paper_page WHERE paper_id=? AND page_number=?",
+        String.class, paperId, pageNumber);
+    } catch (EmptyResultDataAccessException error) {
+      throw notFound("试卷页面不存在");
+    }
+    Path configuredRoot = Paths.get(properties.getStorageRoot());
+    List<Path> roots = new ArrayList<>();
+    roots.add(configuredRoot.toAbsolutePath().normalize());
+    if (!configuredRoot.isAbsolute()) {
+      roots.add(Paths.get("server").resolve(configuredRoot).toAbsolutePath().normalize());
+    }
+    for (Path root : roots) {
+      Path page = root.resolve("papers").resolve(paperId).resolve("pages")
+        .resolve(String.format("page-%04d.png", pageNumber)).normalize();
+      if (page.startsWith(root) && Files.isRegularFile(page)) return new PathResource(page);
+    }
+    throw notFound("试卷页面文件不存在");
+  }
+
+  private void assertPaperOwner(String paperId, String userId) {
+    Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM teaching_paper WHERE id=? AND creator_id=?", Integer.class, paperId, safe(userId));
+    if (count == null || count == 0) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "无权访问该试卷");
   }
 
   public List<Map<String, Object>> listTasks(String status, String studentId, String teacherId) {
@@ -175,11 +423,11 @@ public class TeachingPlatformService {
   }
 
   public List<Map<String, Object>> listRecordingAssets() {
-    return jdbc.query("SELECT session_id, title, duration_ms, status, created_at FROM whiteboard_recording_session " +
+    return jdbc.query("SELECT session_id, title, duration_ms, status, created_at, question_ids_json FROM whiteboard_recording_session " +
       "ORDER BY created_at DESC LIMIT 200", (rs, rowNum) -> {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("id", rs.getString("session_id"));
-        row.put("questionIds", Collections.emptyList());
+        row.put("questionIds", readJson(rs.getString("question_ids_json"), Collections.emptyList()));
         row.put("title", rs.getString("title"));
         row.put("source", "时序录制");
         row.put("duration", formatDuration(rs.getLong("duration_ms")));
@@ -211,27 +459,32 @@ public class TeachingPlatformService {
     List<String> recordingIds = stringList(input.path("recordingAssetIds"));
     if ("published".equals(status) && recordingIds.isEmpty()) throw badRequest("发布商品至少需要一个录制资产");
     if ("published".equals(status)) validateRecordingAssets(recordingIds);
+    String previewMode = input.path("previewMode").asText("first");
+    if (!Arrays.asList("first", "selected").contains(previewMode)) throw badRequest("非法试看策略");
+    int freeQuestionCount = Math.max(0, input.path("freeQuestionCount").asInt(0));
     LocalDateTime now = LocalDateTime.now();
     int changed = jdbc.update("UPDATE learning_product SET teacher_name=?, title=?, subtitle=?, subject=?, grade=?, " +
       "product_type=?, paper_id=?, price=?, original_price=?, status=?, cover_style=?, lesson_count=?, duration=?, " +
-      "description=?, highlights_json=?, published_at=CASE WHEN ?='published' THEN COALESCE(published_at, ?) ELSE published_at END, " +
+      "description=?, highlights_json=?, preview_mode=?, free_question_count=?, preview_question_ids_json=?, published_at=CASE WHEN ?='published' THEN COALESCE(published_at, ?) ELSE published_at END, " +
       "version=version+1, updated_at=? WHERE id=? AND teacher_id=?", input.path("teacherName").asText(""),
       required(input.path("title").asText(), "商品名称"), input.path("subtitle").asText(""),
       required(input.path("subject").asText(), "学科"), required(input.path("grade").asText(), "年级"), productType,
       nullable(input.path("paperId").asText(null)), price, input.hasNonNull("originalPrice") ? input.path("originalPrice").decimalValue() : null,
       status, input.path("coverStyle").asText("indigo"), input.path("lessonCount").asInt(0), input.path("duration").asText(""),
-      input.path("description").asText(""), json(input.path("highlights")), status, Timestamp.valueOf(now), Timestamp.valueOf(now),
+      input.path("description").asText(""), json(input.path("highlights")), previewMode, freeQuestionCount,
+      json(input.path("previewQuestionIds")), status, Timestamp.valueOf(now), Timestamp.valueOf(now),
       productId, teacherId);
     if (changed == 0) {
       jdbc.update("INSERT INTO learning_product (id, teacher_id, teacher_name, title, subtitle, subject, grade, product_type, " +
         "paper_id, price, original_price, status, cover_style, lesson_count, duration, description, highlights_json, " +
-        "published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "preview_mode, free_question_count, preview_question_ids_json, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         productId, required(teacherId, "老师 ID"), input.path("teacherName").asText(""), required(input.path("title").asText(), "商品名称"),
         input.path("subtitle").asText(""), required(input.path("subject").asText(), "学科"), required(input.path("grade").asText(), "年级"),
         productType, nullable(input.path("paperId").asText(null)), price,
         input.hasNonNull("originalPrice") ? input.path("originalPrice").decimalValue() : null, status,
         input.path("coverStyle").asText("indigo"), input.path("lessonCount").asInt(0), input.path("duration").asText(""),
-        input.path("description").asText(""), json(input.path("highlights")), "published".equals(status) ? Timestamp.valueOf(now) : null,
+        input.path("description").asText(""), json(input.path("highlights")), previewMode, freeQuestionCount,
+        json(input.path("previewQuestionIds")), "published".equals(status) ? Timestamp.valueOf(now) : null,
         Timestamp.valueOf(now), Timestamp.valueOf(now));
     }
     replaceProductRelations(productId, stringList(input.path("questionIds")), recordingIds);
@@ -261,7 +514,7 @@ public class TeachingPlatformService {
   private Map<String, Object> getQuestion(String id) {
     try {
       return jdbc.queryForObject("SELECT id, paper_id, question_number, question_type, stem, options_json, answer, analysis, " +
-        "points, confidence, review_status, teaching_status, version FROM teaching_question WHERE id=?", (rs, n) -> questionRow(rs), id);
+        "points, confidence, difficulty, review_status, teaching_status, crop_regions_json, version FROM teaching_question WHERE id=?", (rs, n) -> questionRow(rs), id);
     } catch (EmptyResultDataAccessException error) { throw notFound("题目不存在"); }
   }
 
@@ -301,6 +554,9 @@ public class TeachingPlatformService {
   private void refreshPaperCounts(String paperId) {
     jdbc.update("UPDATE teaching_paper p SET question_count=(SELECT COUNT(*) FROM teaching_question q WHERE q.paper_id=p.id), " +
       "reviewed_count=(SELECT COUNT(*) FROM teaching_question q WHERE q.paper_id=p.id AND q.review_status='confirmed'), " +
+      "status=CASE WHEN (SELECT COUNT(*) FROM teaching_question q WHERE q.paper_id=p.id)>0 " +
+      "AND (SELECT COUNT(*) FROM teaching_question q WHERE q.paper_id=p.id AND q.review_status='confirmed')=(SELECT COUNT(*) FROM teaching_question q WHERE q.paper_id=p.id) " +
+      "THEN 'ready' WHEN p.status='ready' THEN 'review' ELSE p.status END, " +
       "updated_at=? WHERE p.id=?", Timestamp.valueOf(LocalDateTime.now()), paperId);
   }
 
@@ -338,8 +594,16 @@ public class TeachingPlatformService {
     row.put("id", rs.getString("id")); row.put("paperId", rs.getString("paper_id")); row.put("number", rs.getInt("question_number"));
     row.put("type", rs.getString("question_type")); row.put("stem", rs.getString("stem")); row.put("options", readJson(rs.getString("options_json"), Collections.emptyList()));
     row.put("answer", rs.getString("answer")); row.put("analysis", rs.getString("analysis")); row.put("points", rs.getBigDecimal("points"));
-    row.put("confidence", rs.getInt("confidence")); row.put("status", rs.getString("review_status"));
-    row.put("teachingStatus", rs.getString("teaching_status")); row.put("version", rs.getLong("version")); return row;
+    row.put("confidence", rs.getInt("confidence")); row.put("difficulty", rs.getString("difficulty")); row.put("status", rs.getString("review_status"));
+    row.put("teachingStatus", rs.getString("teaching_status")); row.put("version", rs.getLong("version"));
+    JsonNode cropData;
+    try { cropData = objectMapper.readTree(rs.getString("crop_regions_json")); } catch (Exception error) { cropData = objectMapper.createObjectNode(); }
+    row.put("sourceRegions", cropData.path("regions"));
+    if (cropData.has("presentationLayout")) row.put("presentationLayout", cropData.path("presentationLayout"));
+    List<String> cropUrls = new ArrayList<>(); for (int i = 0; i < cropData.path("assets").size(); i++) cropUrls.add("/api/questions/" + rs.getString("id") + "/crops/" + i);
+    row.put("cropUrls", cropUrls);
+    List<String> figureUrls = new ArrayList<>(); for (int i = 0; i < cropData.path("figureAssets").size(); i++) figureUrls.add("/api/questions/" + rs.getString("id") + "/figures/" + i);
+    row.put("figureUrls", figureUrls); return row;
   }
 
   private Map<String, Object> taskRow(ResultSet rs) throws SQLException {
@@ -367,7 +631,10 @@ public class TeachingPlatformService {
     row.put("originalPrice", rs.getBigDecimal("original_price")); row.put("status", rs.getString("status")); row.put("coverStyle", rs.getString("cover_style"));
     row.put("lessonCount", rs.getInt("lesson_count")); row.put("duration", rs.getString("duration")); row.put("sales", rs.getInt("sales"));
     row.put("rating", rs.getBigDecimal("rating")); row.put("description", rs.getString("description"));
-    row.put("highlights", readJson(rs.getString("highlights_json"), Collections.emptyList())); row.put("publishedAt", timestamp(rs, "published_at")); return row;
+    row.put("highlights", readJson(rs.getString("highlights_json"), Collections.emptyList()));
+    row.put("previewMode", rs.getString("preview_mode")); row.put("freeQuestionCount", rs.getInt("free_question_count"));
+    row.put("previewQuestionIds", readJson(rs.getString("preview_question_ids_json"), Collections.emptyList()));
+    row.put("publishedAt", timestamp(rs, "published_at")); return row;
   }
 
   private Map<String, Object> purchaseRow(ResultSet rs) throws SQLException {

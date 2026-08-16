@@ -56,6 +56,9 @@ export function createQiniuRecordingStorage(options: QiniuRecordingStorageOption
         audioMimeType: recording.audio?.mimeType,
         audioDurationMs: recording.audio?.durationMs,
         audioStartOffsetMs: recording.audio?.startOffsetMs,
+        paperId: recording.paperId,
+        questionIds: recording.questionIds,
+        questionSegments: recording.questionSegments,
         parts: initResponse.parts.map((part) => ({
           id: part.id,
           objectKey: part.objectKey,
@@ -78,7 +81,11 @@ export function createQiniuRecordingStorage(options: QiniuRecordingStorageOption
         throw new Error(`Failed to load recording: ${response.status}`)
       }
 
-      return (await response.json()) as RecordingPackage
+      const recording = (await response.json()) as RecordingPackage
+      if (recording.audio) {
+        recording.audio.url = `${options.baseUrl}/whiteboard/recordings/${encodeURIComponent(recording.sessionId)}/audio`
+      }
+      return recording
     },
   }
 }
@@ -110,7 +117,19 @@ async function uploadToQiniu(uploadUrl: string, token: string, key: string, payl
   })
 
   if (!response.ok) {
-    throw new Error(`Failed to upload ${key} to Qiniu: ${response.status}`)
+    const detail = await readErrorDetail(response)
+    throw new Error(`七牛上传失败（HTTP ${response.status}）${detail ? `：${detail}` : ''}`)
+  }
+}
+
+async function readErrorDetail(response: Response) {
+  const body = await response.text().catch(() => '')
+  if (!body) return ''
+  try {
+    const parsed = JSON.parse(body) as { error?: string; message?: string }
+    return parsed.error ?? parsed.message ?? body
+  } catch {
+    return body
   }
 }
 

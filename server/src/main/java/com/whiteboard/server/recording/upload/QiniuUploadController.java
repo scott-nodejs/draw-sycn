@@ -3,16 +3,14 @@ package com.whiteboard.server.recording.upload;
 import com.whiteboard.server.config.WhiteboardProperties;
 import com.whiteboard.server.recording.RecordingManifest;
 import com.whiteboard.server.recording.RecordingService;
-import java.nio.charset.StandardCharsets;
+import com.qiniu.util.Auth;
+import com.qiniu.util.StringMap;
 import java.util.ArrayList;
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import java.util.Base64;
 
 @RestController
 @RequestMapping("/api/whiteboard/recordings")
@@ -70,25 +68,21 @@ public class QiniuUploadController {
     manifest.audioMimeType = request.audioMimeType == null ? "" : request.audioMimeType;
     manifest.audioDurationMs = request.audioDurationMs;
     manifest.audioStartOffsetMs = request.audioStartOffsetMs;
-    recordingService.upsertRecordingSession(manifest, "qiniu");
+    recordingService.completeQiniuRecording(manifest, request);
     return manifest;
   }
 
   private String createUploadToken(WhiteboardProperties.Qiniu qiniu, String key) {
-    try {
-      long deadline = System.currentTimeMillis() / 1000 + qiniu.getTokenExpireSeconds();
-      String scope = qiniu.getBucket() + ":" + key;
-      String policy =
-        "{\"scope\":\"" + escapeJson(scope) + "\",\"deadline\":" + deadline
-          + ",\"insertOnly\":0,\"returnBody\":\"{\\\"key\\\":\\\"$(key)\\\",\\\"hash\\\":\\\"$(etag)\\\",\\\"bucket\\\":\\\"$(bucket)\\\",\\\"fsize\\\":$(fsize)}\"}";
-      String encodedPolicy = urlSafeBase64(policy.getBytes(StandardCharsets.UTF_8));
-      Mac mac = Mac.getInstance("HmacSHA1");
-      mac.init(new SecretKeySpec(qiniu.getSecretKey().getBytes(StandardCharsets.UTF_8), "HmacSHA1"));
-      String encodedSign = urlSafeBase64(mac.doFinal(encodedPolicy.getBytes(StandardCharsets.UTF_8)));
-      return qiniu.getAccessKey() + ":" + encodedSign + ":" + encodedPolicy;
-    } catch (Exception error) {
-      throw new IllegalStateException("Failed to create Qiniu upload token", error);
-    }
+    Auth auth = Auth.create(qiniu.getAccessKey().trim(), qiniu.getSecretKey().trim());
+    StringMap policy = new StringMap();
+    policy.put("insertOnly", 0);
+    policy.put("returnBody", "{\"key\":\"$(key)\",\"hash\":\"$(etag)\",\"bucket\":\"$(bucket)\",\"fsize\":$(fsize)}");
+    return auth.uploadToken(
+      qiniu.getBucket().trim(),
+      key,
+      qiniu.getTokenExpireSeconds(),
+      policy
+    );
   }
 
   private void requireQiniuConfig(WhiteboardProperties.Qiniu qiniu) {
@@ -126,14 +120,6 @@ public class QiniuUploadController {
     }
 
     return qiniu.getPublicDomain().replaceAll("/$", "") + "/" + key;
-  }
-
-  private String escapeJson(String value) {
-    return value.replace("\\", "\\\\").replace("\"", "\\\"");
-  }
-
-  private String urlSafeBase64(byte[] bytes) {
-    return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
   }
 
   private boolean isBlank(String value) {

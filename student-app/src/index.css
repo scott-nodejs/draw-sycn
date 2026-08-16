@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+  color: #172033;
+  background: #f5f8fc;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: #f5f8fc; }
+button, input, select { font: inherit; }
+.question-markdown p, .question-options p { margin: 0; }
+.student-presentation-canvas { position: relative; width: 100%; overflow: hidden; border-radius: 8px; background: #fff; }
+.student-presentation-block { position: absolute; box-sizing: border-box; color: #2f3a4c; }
+.student-presentation-block p { margin: 0; }
+.student-presentation-block strong { display: block; font-size: 12px; line-height: 1.5; }
+.student-presentation-options { display: flex; flex-wrap: wrap; gap: 7px 18px; color: #5f6a7c; font-size: 10px; }
+.student-presentation-options span { display: inline-flex; gap: 3px; }
+.student-presentation-block img { display: block; width: 100%; max-height: 125px; object-fit: contain; object-position: left top; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-slate-200/80 bg-white shadow-soft;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 active:scale-[.99];
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700;
+  }
+  .chip {
+    @apply inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-medium;
+  }
+}

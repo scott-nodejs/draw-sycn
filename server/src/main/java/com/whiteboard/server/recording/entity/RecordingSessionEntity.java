@@ -18,6 +18,8 @@ public class RecordingSessionEntity {
   private String eventManifestUrl;
   private String audioUrl;
   private String audioMimeType;
+  private String questionIdsJson;
+  private String questionSegmentsJson;
   private Long audioDurationMs;
   private Long audioStartOffsetMs;
   private Long durationMs;
@@ -103,6 +105,10 @@ public class RecordingSessionEntity {
   public void setAudioUrl(String audioUrl) { this.audioUrl = audioUrl; }
   public String getAudioMimeType() { return audioMimeType; }
   public void setAudioMimeType(String audioMimeType) { this.audioMimeType = audioMimeType; }
+  public String getQuestionIdsJson() { return questionIdsJson; }
+  public void setQuestionIdsJson(String questionIdsJson) { this.questionIdsJson = questionIdsJson; }
+  public String getQuestionSegmentsJson() { return questionSegmentsJson; }
+  public void setQuestionSegmentsJson(String questionSegmentsJson) { this.questionSegmentsJson = questionSegmentsJson; }
   public Long getAudioDurationMs() { return audioDurationMs; }
   public void setAudioDurationMs(Long audioDurationMs) { this.audioDurationMs = audioDurationMs; }
   public Long getAudioStartOffsetMs() { return audioStartOffsetMs; }

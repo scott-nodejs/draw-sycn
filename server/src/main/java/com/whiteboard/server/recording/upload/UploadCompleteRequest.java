@@ -12,5 +12,15 @@ public class UploadCompleteRequest {
   public String audioMimeType;
   public long audioDurationMs;
   public long audioStartOffsetMs;
+  public String paperId;
+  public List<String> questionIds;
+  public List<QuestionSegment> questionSegments;
   public List<UploadedPart> parts;
+
+  public static class QuestionSegment {
+    public String questionId;
+    public int questionNumber;
+    public long startMs;
+    public long endMs;
+  }
 }
