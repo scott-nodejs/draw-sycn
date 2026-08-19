@@ -42,6 +42,7 @@ export interface TeachingRepository {
   listStudentClassAssignments(signal?: AbortSignal): Promise<ClassAssignment[]>
   submitStudentAssignment(assignmentId: string, input: { answerText: string; boardSnapshot: unknown }, signal?: AbortSignal): Promise<{ status: string; submittedAt: string }>
   createSyncRoom(groupId: string, studentIds: string[], signal?: AbortSignal): Promise<SyncRoom>
+  startSyncRoom(roomId: string, signal?: AbortSignal): Promise<unknown>
   updateSyncRoomQuestion(roomId: string, questionId: string, signal?: AbortSignal): Promise<SyncRoom>
   listStudentSyncRooms(signal?: AbortSignal): Promise<SyncRoom[]>
   closeSyncRoom(roomId: string, signal?: AbortSignal): Promise<void>
@@ -147,9 +148,10 @@ class HttpTeachingRepository implements TeachingRepository {
   listStudentClassAssignments(signal?: AbortSignal) { return this.request<ClassAssignment[]>('/student/class-assignments', { signal }) }
   submitStudentAssignment(assignmentId: string, input: { answerText: string; boardSnapshot: unknown }, signal?: AbortSignal) { return this.request<{ status: string; submittedAt: string }>(`/student/class-assignments/${encodeURIComponent(assignmentId)}/submissions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal }) }
   createSyncRoom(groupId: string, studentIds: string[], signal?: AbortSignal) { return this.request<SyncRoom>(`/teacher/class-groups/${encodeURIComponent(groupId)}/sync-rooms`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ studentIds }), signal }) }
+  startSyncRoom(roomId: string, signal?: AbortSignal) { return this.request(`/classroom/rooms/${encodeURIComponent(roomId)}/start`, { method: 'POST', signal }) }
   updateSyncRoomQuestion(roomId: string, questionId: string, signal?: AbortSignal) { return this.request<SyncRoom>(`/teacher/sync-rooms/${encodeURIComponent(roomId)}/current-question`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ questionId }), signal }) }
   listStudentSyncRooms(signal?: AbortSignal) { return this.request<SyncRoom[]>('/student/sync-rooms', { signal }) }
-  closeSyncRoom(roomId: string, signal?: AbortSignal) { return this.request<void>(`/teacher/sync-rooms/${encodeURIComponent(roomId)}/close`, { method: 'POST', signal }) }
+  closeSyncRoom(roomId: string, signal?: AbortSignal) { return this.request<void>(`/classroom/rooms/${encodeURIComponent(roomId)}/end`, { method: 'POST', signal }) }
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
     const headers = new Headers(init?.headers)
@@ -189,8 +191,9 @@ class DevelopmentTeachingRepository implements TeachingRepository {
   async listStudentClassGroups() { return [] }
   async listStudentClassAssignments() { return [] }
   async submitStudentAssignment() { return { status: 'submitted', submittedAt: new Date().toISOString() } }
-  async createSyncRoom(groupId: string) { return { id: crypto.randomUUID(), groupId, groupName: '本地班级', teacherId: 'local', teacherName: '老师', title: '课堂同步看板', status: 'open' as const, createdAt: new Date().toISOString() } }
-  async updateSyncRoomQuestion(roomId: string, questionId: string) { return { id: roomId, groupId: 'local', groupName: '本地班级', teacherId: 'local', teacherName: '老师', title: '课堂同步看板', status: 'open' as const, createdAt: new Date().toISOString(), currentQuestion: { id: questionId, number: 0, type: '', stem: '' } } }
+  async createSyncRoom(groupId: string) { return { id: crypto.randomUUID(), groupId, groupName: '本地班级', teacherId: 'local', teacherName: '老师', title: '课堂同步看板', status: 'NOT_STARTED' as const, createdAt: new Date().toISOString() } }
+  async startSyncRoom() { return {} }
+  async updateSyncRoomQuestion(roomId: string, questionId: string) { return { id: roomId, groupId: 'local', groupName: '本地班级', teacherId: 'local', teacherName: '老师', title: '课堂同步看板', status: 'ACTIVE' as const, createdAt: new Date().toISOString(), currentQuestion: { id: questionId, number: 0, type: '', stem: '' } } }
   async listStudentSyncRooms() { return [] }
   async closeSyncRoom() { return undefined }
 

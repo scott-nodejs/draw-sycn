@@ -330,7 +330,7 @@ public class TeachingPlatformService {
 
   private void assertQuestionImageViewer(String questionId, String paperId, String userId) {
     Integer allowed = jdbc.queryForObject(
-      "SELECT COUNT(*) FROM teaching_paper p WHERE p.id=? AND (p.creator_id=? OR EXISTS (SELECT 1 FROM class_sync_room r JOIN class_sync_room_member m ON m.room_id=r.id WHERE r.current_question_id=? AND r.status='open' AND m.student_id=?))",
+      "SELECT COUNT(*) FROM teaching_paper p WHERE p.id=? AND (p.creator_id=? OR EXISTS (SELECT 1 FROM class_sync_room r JOIN class_sync_room_member m ON m.room_id=r.id WHERE r.current_question_id=? AND r.status='ACTIVE' AND m.student_id=?))",
       Integer.class, paperId, userId, questionId, userId);
     if (allowed == null || allowed == 0) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "无权查看题目图片");
   }

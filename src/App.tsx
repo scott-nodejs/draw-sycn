@@ -88,6 +88,10 @@ import {
   getStoredSession,
   type AuthSession,
 } from "./services/authService";
+import { classroomApi, type ClassroomMember, type HandRaiseItem } from "./services/classroomApi";
+import { RtcRoomManager } from "./services/rtc/RtcRoomManager";
+import type { RtcConnectionState } from "./services/rtc/RtcProvider";
+import { connectClassroomSocket } from "./services/classroomSocket";
 import { syncAssetStore } from "./sync/assetStore";
 import { createSyncUri, defaultSyncRoomId } from "./sync/syncConfig";
 
@@ -406,7 +410,7 @@ export function App() {
         ) : page === "question-bank" ? (
           <QuestionBank papers={papers} onTeach={teachBankQuestion} />
         ) : page === "class-groups" ? (
-          <ClassGroupManager papers={papers} onStartBoardSync={async (groupId,studentIds) => { const room=await teachingRepository.createSyncRoom(groupId,studentIds);setActiveSyncRoomId(room.id);setStudioAudienceCount(studentIds.length);setStudioMode("live");setStudioExitPage("class-groups");setPage("studio"); }} />
+          <ClassGroupManager papers={papers} onStartBoardSync={async (groupId,studentIds) => { const room=await teachingRepository.createSyncRoom(groupId,studentIds);await teachingRepository.startSyncRoom(room.id);setActiveSyncRoomId(room.id);setStudioAudienceCount(studentIds.length);setStudioMode("live");setStudioExitPage("class-groups");setPage("studio"); }} />
         ) : page === "review" ? (
           <QuestionReview
             paper={papers.find((paper) => paper.id === activePaperId)}
@@ -2609,6 +2613,19 @@ function TeachingStudio({
   );
   const recorderRef = useRef<Recorder | null>(null);
   const liveRoomClosedRef = useRef(false);
+  const rtcRef = useRef<RtcRoomManager | null>(null);
+  const [rtcState,setRtcState]=useState<RtcConnectionState>('DISCONNECTED');
+  const [rtcMuted,setRtcMuted]=useState(false);
+  const [roomMembers,setRoomMembers]=useState<ClassroomMember[]>([]);
+  const [handRaises,setHandRaises]=useState<HandRaiseItem[]>([]);
+
+  useEffect(()=>{
+    if(mode!=='live'||!syncRoomId)return
+    const refresh=()=>Promise.all([classroomApi.members(syncRoomId),classroomApi.handRaises(syncRoomId)]).then(([members,raises])=>{setRoomMembers(members);setHandRaises(raises)}).catch(()=>undefined)
+    void refresh();const timer=window.setInterval(()=>void refresh(),2000);return()=>window.clearInterval(timer)
+  },[mode,syncRoomId])
+  useEffect(()=>{if(mode!=='live'||!syncRoomId)return;return connectClassroomSocket(syncRoomId,()=>{void Promise.all([classroomApi.members(syncRoomId),classroomApi.handRaises(syncRoomId)]).then(([members,raises])=>{setRoomMembers(members);setHandRaises(raises)})})},[mode,syncRoomId])
+  useEffect(()=>()=>{void rtcRef.current?.disconnect().catch(()=>undefined)},[])
 
   useEffect(() => {
     if (mode !== "live" || recording || !lastPackage || liveRoomClosedRef.current) return;
@@ -2662,6 +2679,10 @@ function TeachingStudio({
     setLastPackage(null);
     setSaveTask(null);
     try {
+      if(mode==='live'){
+        const rtc=new RtcRoomManager();rtcRef.current=rtc;rtc.onStateChange(setRtcState)
+        await rtc.connect(await classroomApi.rtcToken(syncRoomId));await rtc.startMicrophone();await classroomApi.connected(syncRoomId)
+      }
       const preparedAudio = await prepareAudioRecorder();
       const recorder = startRecording(editorRef.current);
       recorderRef.current = recorder;
@@ -2671,6 +2692,7 @@ function TeachingStudio({
       audioRecorderRef.current = preparedAudio.start(recorder.startedAt);
       setRecording(true);
     } catch (cause) {
+      if(mode==='live'){void rtcRef.current?.disconnect().catch(()=>undefined);rtcRef.current=null}
       const message =
         cause instanceof DOMException && cause.name === "NotAllowedError"
           ? "麦克风权限被拒绝，请允许访问麦克风后重试。"
@@ -2683,8 +2705,9 @@ function TeachingStudio({
       setStarting(false);
     }
   };
-  const stop = async () => {
+  const stop = async (confirmed=false) => {
     if (!editorRef.current || !recorderRef.current) return;
+    if(mode==='live'&&!confirmed&&!window.confirm('确认结束本次课堂？结束后所有学生将自动退出同步课堂。'))return;
     const stoppedAt = Math.max(0, Math.round(performance.now() - recorderRef.current.startedAt));
     const activeSegment = questionSegmentsRef.current.at(-1);
     if (activeSegment) activeSegment.endMs = Math.max(activeSegment.startMs, stoppedAt);
@@ -2723,6 +2746,8 @@ function TeachingStudio({
     if (completedTask.status === "succeeded") await onRecordingSaved();
     if (mode === "live") {
       try {
+        await rtcRef.current?.disconnect();rtcRef.current=null;setRtcState('DISCONNECTED');
+        await classroomApi.rtcLeave(syncRoomId).catch(()=>undefined);
         await onLiveEnded();
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : "关闭同步房间失败";
@@ -2770,11 +2795,18 @@ function TeachingStudio({
     editor.clearHistory();
     setIndex(targetIndex);
   };
+  const handleExit=async()=>{
+    if(mode==='live'&&!window.confirm('确认结束本次课堂？结束后所有学生将自动退出同步课堂。'))return
+    if(recording){await stop(true);onExit();return}
+    await rtcRef.current?.disconnect().catch(()=>undefined);rtcRef.current=null
+    if(mode==='live'){await classroomApi.rtcLeave(syncRoomId).catch(()=>undefined);await onLiveEnded()}
+    onExit()
+  }
   return (
     <main className="studio-page">
       <header className="studio-header">
         <div>
-          <button className="icon-button" onClick={onExit}>
+          <button className="icon-button" onClick={()=>void handleExit()}>
             <ArrowLeft size={19} />
           </button>
           <div>
@@ -2792,7 +2824,7 @@ function TeachingStudio({
             ? `${mode === "live" ? "直播并录制中" : "录制中"} ${formatMs(elapsed)}`
             : "准备就绪"}
         </div>
-        <button className="button secondary" onClick={onExit}>
+        <button className="button secondary" onClick={()=>void handleExit()}>
           退出工作台
         </button>
       </header>
@@ -2902,13 +2934,13 @@ function TeachingStudio({
               <StatusBadge status="success">正常</StatusBadge>
             </div>
             {mode === "live" ? (
-              <div className="viewer-metric">
+              <><div className="viewer-metric">
                 <Users size={18} />
                 <div>
-                  <strong>{recording ? "12" : "0"}</strong>
+                  <strong>{roomMembers.filter(item=>item.presenceStatus==='ONLINE').length}</strong>
                   <span>在线学生</span>
                 </div>
-              </div>
+              </div><button className="button secondary full" disabled={rtcState!=='CONNECTED'} onClick={async()=>{const next=!rtcMuted;if(next)await rtcRef.current?.mute();else await rtcRef.current?.unmute();await classroomApi.mute(syncRoomId,next);setRtcMuted(next)}}><Mic size={16}/>{rtcMuted?'取消静音':'静音麦克风'}</button></>
             ) : null}
             {!recording ? (
               <button className="button primary full" onClick={start}>
@@ -2916,7 +2948,7 @@ function TeachingStudio({
                 {mode === "live" ? "开始直播并录制" : "开始录制"}
               </button>
             ) : (
-              <button className="button danger full" onClick={stop}>
+              <button className="button danger full" onClick={()=>void stop()}>
                 <Square size={16} />
                 {mode === "live" ? "结束直播" : "结束录制"}
               </button>
@@ -2938,6 +2970,12 @@ function TeachingStudio({
               </button>
             ) : null}
           </section>
+          {mode==='live'?<section>
+            <h3>举手队列（{handRaises.filter(item=>item.status==='WAITING').length}）</h3>
+            {handRaises.length?handRaises.map(item=><div className="current-question-summary" key={item.id}><strong>{item.studentName}</strong><span>{item.status==='WAITING'?`等待 ${item.waitSeconds} 秒`:item.status}</span><div className="studio-inline-actions">{item.status==='WAITING'?<><button className="button primary" onClick={()=>void classroomApi.invite(syncRoomId,item.studentId)}>允许提问</button><button className="button secondary" onClick={()=>void classroomApi.reject(syncRoomId,item.studentId)}>忽略</button></>:item.status==='CONNECTED'?<><button className="button secondary" onClick={()=>void classroomApi.muteStudent(syncRoomId,item.studentId)}>静音</button><button className="button danger" onClick={()=>void classroomApi.kick(syncRoomId,item.studentId)}>结束连麦</button></>:null}</div></div>):<p className="control-note">暂无学生举手</p>}
+            <h3>学生权限</h3>
+            {roomMembers.map(member=><div className="device-row" key={member.studentId}><span>{member.studentName}</span><button className="button secondary" onClick={()=>void classroomApi.canvas(syncRoomId,member.studentId,!member.canWriteCanvas)}>{member.canWriteCanvas?'收回书写':'授权书写'}</button></div>)}
+          </section>:null}
           <section>
             <h3>当前题目</h3>
             <div className="current-question-summary">

@@ -46,7 +46,8 @@
     "recharts": "^2.15.0",
     "rehype-katex": "^7.0.1",
     "remark-math": "^6.0.0",
-    "tldraw": "^4.5.12"
+    "tldraw": "^4.5.12",
+    "trtc-sdk-v5": "^5.19.1"
   },
   "devDependencies": {
     "@types/react": "^18.3.18",

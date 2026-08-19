@@ -360,7 +360,10 @@ CREATE TABLE IF NOT EXISTS class_sync_room (
   teacher_id VARCHAR(64) NOT NULL,
   title VARCHAR(255) NOT NULL,
   current_question_id VARCHAR(64) NULL,
-  status VARCHAR(32) NOT NULL DEFAULT 'open',
+  status VARCHAR(32) NOT NULL DEFAULT 'NOT_STARTED',
+  max_rtc_seats INT NOT NULL DEFAULT 3,
+  started_at DATETIME NULL,
+  ended_at DATETIME NULL,
   created_at DATETIME NOT NULL,
   closed_at DATETIME NULL,
   KEY idx_sync_room_teacher (teacher_id, created_at),
@@ -371,7 +374,39 @@ CREATE TABLE IF NOT EXISTS class_sync_room_member (
   id VARCHAR(64) NOT NULL PRIMARY KEY,
   room_id VARCHAR(64) NOT NULL,
   student_id VARCHAR(64) NOT NULL,
+  presence_status VARCHAR(32) NOT NULL DEFAULT 'OFFLINE',
+  joined_at DATETIME NULL,
+  left_at DATETIME NULL,
+  last_seen_at DATETIME NULL,
+  can_publish_audio TINYINT NOT NULL DEFAULT 0,
+  can_write_canvas TINYINT NOT NULL DEFAULT 0,
   created_at DATETIME NOT NULL,
   UNIQUE KEY uk_sync_room_member (room_id, student_id),
   KEY idx_sync_room_member_student (student_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS class_sync_room_event (
+  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  room_id VARCHAR(64) NOT NULL,
+  event_type VARCHAR(64) NOT NULL,
+  actor_id VARCHAR(64) NOT NULL DEFAULT '',
+  target_user_id VARCHAR(64) NOT NULL DEFAULT '',
+  payload_json JSON NULL,
+  occurred_at DATETIME(3) NOT NULL,
+  KEY idx_room_event_cursor (room_id, id),
+  KEY idx_room_event_time (room_id, occurred_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS class_sync_hand_raise (
+  id VARCHAR(64) NOT NULL PRIMARY KEY, room_id VARCHAR(64) NOT NULL, student_id VARCHAR(64) NOT NULL,
+  status VARCHAR(32) NOT NULL, raised_at DATETIME(3) NOT NULL, invited_at DATETIME(3) NULL,
+  connected_at DATETIME(3) NULL, ended_at DATETIME(3) NULL, created_at DATETIME(3) NOT NULL,
+  KEY idx_hand_raise_queue (room_id,status,raised_at), KEY idx_hand_raise_student (room_id,student_id,status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS class_sync_rtc_session (
+  id VARCHAR(64) NOT NULL PRIMARY KEY, room_id VARCHAR(64) NOT NULL, user_id VARCHAR(64) NOT NULL,
+  role VARCHAR(16) NOT NULL, status VARCHAR(32) NOT NULL, mute_status VARCHAR(16) NOT NULL DEFAULT 'UNMUTED',
+  joined_at DATETIME(3) NULL, left_at DATETIME(3) NULL, created_at DATETIME(3) NOT NULL,
+  KEY idx_rtc_room_status (room_id,status), KEY idx_rtc_user (room_id,user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

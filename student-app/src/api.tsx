@@ -12,7 +12,7 @@ export type StudentRoom = { id: string; name: string; teacher: string; clazz: st
 export type StudentClass = { id: string; name: string; grade: string; teacher: string; students: number; recent: string; subject: string }
 
 type RawAssignment = { id:string; contentType:'paper'|'question'; title:string; teacherName?:string; groupName:string; createdAt:string; scheduledAt?:string; status?:string }
-type RawRoom = { id:string; title:string; teacherName:string; groupName:string; createdAt:string; status:'open'|'closed'; currentQuestion?:{id:string;number:number;type:string;stem:string;optionsJson?:string;figureUrls?:string[];presentationLayoutJson?:string}|null }
+type RawRoom = { id:string; title:string; teacherName:string; groupName:string; createdAt:string; status:'NOT_STARTED'|'ACTIVE'|'ENDED'; currentQuestion?:{id:string;number:number;type:string;stem:string;optionsJson?:string;figureUrls?:string[];presentationLayoutJson?:string}|null }
 type RawClass = { id:string; name:string; grade:string; memberCount:number; description?:string }
 type ApiContextValue = { user:StudentUser|null; ready:boolean; tasks:StudentTask[]; rooms:StudentRoom[]; classes:StudentClass[]; newRoom:StudentRoom|null; dismissNewRoom:()=>void; login:(account:string,password:string)=>Promise<void>; register:(mobile:string,password:string,displayName:string)=>Promise<void>; logout:()=>void; joinClass:(code:string)=>Promise<void>; refresh:()=>Promise<void> }
 
@@ -30,6 +30,32 @@ async function request<T>(path:string, init:RequestInit = {}):Promise<T> {
   return payload as T
 }
 
+export type RtcCredentials={sdkAppId:number;roomId:string;userId:string;userSig:string;publishAudio:boolean;expiresAt:number}
+export type ClassroomEvent={id:number;event:string;roomId:string;userId:string;targetUserId:string;timestamp:number;payload:Record<string,unknown>}
+export const studentClassroomApi={
+  rtcToken:(id:string)=>request<RtcCredentials>(`/classroom/rooms/${encodeURIComponent(id)}/rtc/token`,{method:'POST'}),
+  connected:(id:string)=>request<void>(`/classroom/rooms/${encodeURIComponent(id)}/rtc/connected`,{method:'POST'}),
+  rtcLeave:(id:string)=>request<void>(`/classroom/rooms/${encodeURIComponent(id)}/rtc/leave`,{method:'POST'}),
+  raiseHand:(id:string)=>request(`/classroom/rooms/${encodeURIComponent(id)}/hand-raise`,{method:'POST'}),
+  cancelHand:(id:string)=>request<void>(`/classroom/rooms/${encodeURIComponent(id)}/hand-raise`,{method:'DELETE'}),
+  acceptInvite:(id:string)=>request<RtcCredentials>(`/classroom/rooms/${encodeURIComponent(id)}/rtc/invite/accept`,{method:'POST'}),
+  rejectInvite:(id:string)=>request<void>(`/classroom/rooms/${encodeURIComponent(id)}/rtc/invite/reject`,{method:'POST'}),
+  mute:(id:string,muted:boolean)=>request<void>(`/classroom/rooms/${encodeURIComponent(id)}/rtc/${muted?'mute':'unmute'}`,{method:'POST'}),
+  events:(id:string,afterId:number)=>request<ClassroomEvent[]>(`/classroom/rooms/${encodeURIComponent(id)}/events?afterId=${afterId}`),
+}
+
+export function joinClassroomRoom(roomId:string){
+  return request(`/classroom/rooms/${encodeURIComponent(roomId)}/join`,{method:'POST'})
+}
+
+export function heartbeatClassroomRoom(roomId:string){
+  return request(`/classroom/rooms/${encodeURIComponent(roomId)}/heartbeat`,{method:'POST'})
+}
+
+export function leaveClassroomRoom(roomId:string){
+  return request(`/classroom/rooms/${encodeURIComponent(roomId)}/leave`,{method:'POST'})
+}
+
 export function StudentApiProvider({children}:{children:ReactNode}) {
   const [user,setUser]=useState<StudentUser|null>(null); const [ready,setReady]=useState(false)
   const [tasks,setTasks]=useState<StudentTask[]>([]); const [rooms,setRooms]=useState<StudentRoom[]>([]); const [classes,setClasses]=useState<StudentClass[]>([])
@@ -40,7 +66,7 @@ export function StudentApiProvider({children}:{children:ReactNode}) {
       request<RawAssignment[]>('/student/class-assignments'), request<RawRoom[]>('/student/sync-rooms'), request<RawClass[]>('/student/class-groups'),
     ])
     setTasks(assignmentRows.map(item=>({id:item.id,type:item.contentType==='paper'?'试卷':'单题',title:item.title,teacher:item.teacherName||item.groupName,clazz:item.groupName,publish:item.createdAt.replace('T',' ').slice(5,16),deadline:item.scheduledAt?.replace('T',' ').slice(5,16)||'未设置',status:item.status==='scheduled'?'未开始':'进行中',progress:0,questions:item.contentType==='paper'?0:1})))
-    const nextRooms=roomRows.filter(item=>item.status==='open').map(item=>({id:item.id,name:item.title,teacher:item.teacherName,clazz:item.groupName,time:item.createdAt.replace('T',' ').slice(5,16),status:'进行中',online:0,currentQuestion:item.currentQuestion?{...item.currentQuestion,options:parseOptions(item.currentQuestion.optionsJson),figureUrls:item.currentQuestion.figureUrls||[],presentationLayout:parsePresentationLayout(item.currentQuestion.presentationLayoutJson)}:null}))
+    const nextRooms=roomRows.filter(item=>item.status!=='ENDED').map(item=>({id:item.id,name:item.title,teacher:item.teacherName,clazz:item.groupName,time:item.createdAt.replace('T',' ').slice(5,16),status:item.status==='ACTIVE'?'进行中':'未开始',online:0,currentQuestion:item.currentQuestion?{...item.currentQuestion,options:parseOptions(item.currentQuestion.optionsJson),figureUrls:item.currentQuestion.figureUrls||[],presentationLayout:parsePresentationLayout(item.currentQuestion.presentationLayoutJson)}:null}))
     if(knownRoomIds.current){const added=nextRooms.find(item=>!knownRoomIds.current?.has(item.id));if(added)setNewRoom(added)}
     knownRoomIds.current=new Set(nextRooms.map(item=>item.id))
     setRooms(nextRooms)

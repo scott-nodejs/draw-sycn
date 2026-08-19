@@ -14,5 +14,6 @@ export function createViewerSyncUri(roomId: string) {
   const url = new URL(`${base}/${encodeURIComponent(roomId)}`)
   url.searchParams.set('role', 'viewer')
   url.searchParams.set('appSessionId', sessionId)
+  const token=localStorage.getItem('zhiwen.student.token');if(token)url.searchParams.set('accessToken',token)
   return url.toString()
 }

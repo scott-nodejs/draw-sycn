@@ -30,7 +30,7 @@ const server = createServer((request, response) => {
 
 const wss = new WebSocketServer({ noServer: true })
 
-server.on('upgrade', (request, socket, head) => {
+server.on('upgrade', async (request, socket, head) => {
   const url = new URL(request.url ?? '/', `http://${request.headers.host}`)
   const match = url.pathname.match(/^\/sync\/([^/]+)$/)
 
@@ -42,7 +42,17 @@ server.on('upgrade', (request, socket, head) => {
   const roomId = decodeURIComponent(match[1])
   const role = url.searchParams.get('role') ?? 'viewer'
   const sessionId = url.searchParams.get('appSessionId') ?? randomUUID()
-  const isReadonly = role !== 'teacher' && role !== 'assistant'
+  let isReadonly = role !== 'teacher' && role !== 'assistant'
+  if (process.env.SYNC_REQUIRE_AUTH !== 'false') {
+    const accessToken=url.searchParams.get('accessToken')
+    if(!accessToken){socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');socket.destroy();return}
+    try{
+      const apiBase=(process.env.CLASSROOM_API_BASE_URL??'http://127.0.0.1:8788/api').replace(/\/$/,'')
+      const response=await fetch(`${apiBase}/classroom/rooms/${encodeURIComponent(roomId)}/canvas/access`,{headers:{Authorization:`Bearer ${accessToken}`}})
+      if(!response.ok)throw new Error(`access denied (${response.status})`)
+      const access=await response.json();isReadonly=!access.canWrite
+    }catch(error){console.warn(`[sync:${roomId}] authorization failed`,error);socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');socket.destroy();return}
+  }
 
   wss.handleUpgrade(request, socket, head, (ws) => {
     const room = getRoom(roomId)

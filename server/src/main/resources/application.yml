@@ -23,6 +23,10 @@ mybatis-plus:
       id-type: assign_id
 
 whiteboard:
+  trtc:
+    sdk-app-id: ${TRTC_SDK_APP_ID:1600157974}
+    secret-key: ${TRTC_SECRET_KEY:}
+    user-sig-expire-seconds: ${TRTC_USER_SIG_TTL_SECONDS:7200}
   storage-root: ./data/storage/whiteboard
   qiniu:
     access-key: ${QINIU_ACCESS_KEY:7S_iVr-bCg2TwdpWuo86j1-yFWtTvuwYBY2Sds3H}

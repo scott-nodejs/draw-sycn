@@ -57,6 +57,7 @@
     "rehype-katex": "^7.0.1",
     "remark-math": "^6.0.0",
     "tldraw": "^4.0.0",
+    "trtc-sdk-v5": "^5.19.1",
     "typescript": "^5.8.0",
     "vite": "^7.0.0",
     "ws": "^8.21.3"
