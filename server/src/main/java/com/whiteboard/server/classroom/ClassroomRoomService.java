@@ -30,12 +30,20 @@ public class ClassroomRoomService {
   @Transactional
   public Map<String,Object> start(String roomId, String teacherId) {
     assertTeacher(roomId, teacherId);
-    int changed = jdbc.update("UPDATE class_sync_room SET status='ACTIVE',started_at=COALESCE(started_at,?) WHERE id=? AND status='NOT_STARTED'", now(), roomId);
+    int changed = jdbc.update("UPDATE class_sync_room SET status='ACTIVE',started_at=COALESCE(started_at,?),teacher_heartbeat_at=? WHERE id=? AND status='NOT_STARTED'", now(), now(), roomId);
     if (changed == 0) {
       String status = jdbc.queryForObject("SELECT status FROM class_sync_room WHERE id=?", String.class, roomId);
       if (!"ACTIVE".equals(status)) throw conflict("课堂当前不能开始");
+      jdbc.update("UPDATE class_sync_room SET teacher_heartbeat_at=? WHERE id=?", now(), roomId);
     } else event(roomId, "ROOM_STARTED", teacherId, "", null);
     return roomRow(roomId);
+  }
+
+  @Transactional
+  public void teacherHeartbeat(String roomId, String teacherId) {
+    assertTeacher(roomId, teacherId);
+    int changed = jdbc.update("UPDATE class_sync_room SET teacher_heartbeat_at=? WHERE id=? AND status='ACTIVE'", now(), roomId);
+    if (changed == 0) throw conflict("课堂当前不是进行中状态");
   }
 
   @Transactional

@@ -1,0 +1,87 @@
+package com.whiteboard.server.organizer;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.whiteboard.server.teaching.TeachingPlatformService;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+@RestController
+@RequestMapping("/api/organizer")
+public class OrganizerWorkspaceController {
+  private final OrganizerWorkspaceService organizer;
+  private final TeachingPlatformService teaching;
+
+  public OrganizerWorkspaceController(OrganizerWorkspaceService organizer, TeachingPlatformService teaching) {
+    this.organizer = organizer;
+    this.teaching = teaching;
+  }
+
+  @GetMapping("/dashboard")
+  public Map<String, Object> dashboard(@RequestHeader("X-User-Id") String userId) {
+    return organizer.dashboard(userId);
+  }
+
+  @GetMapping("/papers")
+  public List<Map<String, Object>> papers(@RequestHeader("X-User-Id") String userId) {
+    return organizer.listPapers(userId);
+  }
+
+  @PostMapping(value = "/papers", consumes = "multipart/form-data")
+  @ResponseStatus(HttpStatus.CREATED)
+  public Map<String, Object> upload(@RequestParam("file") MultipartFile[] files,
+      @RequestParam String title, @RequestParam String subject, @RequestParam String grade,
+      @RequestHeader("X-User-Id") String userId) throws IOException {
+    Map<String, Object> paper = teaching.createPaper(Arrays.asList(files), title, subject, grade, "", userId);
+    organizer.attachPaper(String.valueOf(paper.get("id")), userId);
+    return paper;
+  }
+
+  @GetMapping("/papers/{paperId}/questions")
+  public List<Map<String, Object>> questions(@PathVariable String paperId, @RequestHeader("X-User-Id") String userId) {
+    organizer.assertOrganizerPaper(paperId, userId);
+    return teaching.listQuestions(paperId, userId);
+  }
+
+  @GetMapping("/questions")
+  public List<Map<String, Object>> confirmedQuestions(@RequestHeader("X-User-Id") String userId) {
+    return teaching.listAllQuestions("", userId);
+  }
+
+  @PatchMapping("/questions/{questionId}")
+  public Map<String, Object> review(@PathVariable String questionId, @RequestBody JsonNode input,
+      @RequestHeader("X-User-Id") String userId) {
+    return organizer.reviewQuestion(questionId, input, userId);
+  }
+
+  @GetMapping("/question-sets")
+  public List<Map<String, Object>> questionSets(@RequestHeader("X-User-Id") String userId) {
+    return organizer.listQuestionSets(userId);
+  }
+
+  @PostMapping("/question-sets")
+  @ResponseStatus(HttpStatus.CREATED)
+  public Map<String, Object> createQuestionSet(@RequestBody JsonNode input, @RequestHeader("X-User-Id") String userId) {
+    return organizer.saveQuestionSet(null, input, userId);
+  }
+
+  @PutMapping("/question-sets/{setId}")
+  public Map<String, Object> updateQuestionSet(@PathVariable String setId, @RequestBody JsonNode input,
+      @RequestHeader("X-User-Id") String userId) {
+    return organizer.saveQuestionSet(setId, input, userId);
+  }
+
+  @PostMapping("/question-sets/{setId}/publish")
+  public Map<String, Object> publish(@PathVariable String setId, @RequestHeader("X-User-Id") String userId) {
+    return organizer.publish(setId, userId);
+  }
+
+  @PostMapping("/question-sets/{setId}/unpublish")
+  public Map<String, Object> unpublish(@PathVariable String setId, @RequestHeader("X-User-Id") String userId) {
+    return organizer.unpublish(setId, userId);
+  }
+}

@@ -35,6 +35,9 @@ public class ApiAuthenticationFilter extends OncePerRequestFilter {
       if (path.startsWith("/api/student/") && !"student".equals(role)) {
         throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.FORBIDDEN, "当前接口仅限学生账号访问");
       }
+      if (path.startsWith("/api/organizer/") && !"organizer".equals(role)) {
+        throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.FORBIDDEN, "当前接口仅限试题整理人员访问");
+      }
       HttpServletRequestWrapper wrapped = new HttpServletRequestWrapper(request) {
         @Override public String getHeader(String name) {
           if ("X-User-Id".equalsIgnoreCase(name)) return userId;

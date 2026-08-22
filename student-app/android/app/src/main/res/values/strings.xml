@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">笔尖云堂学生端</string>
+    <string name="title_activity_main">笔尖云堂学生端</string>
+    <string name="package_name">com.bijianyuntang.student</string>
+    <string name="custom_url_scheme">com.bijianyuntang.student</string>
+</resources>

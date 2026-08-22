@@ -4,6 +4,12 @@ server:
     include-message: always
 
 spring:
+  config:
+    import: optional:file:.env.local[.properties]
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 110MB
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: ${MYSQL_URL:jdbc:mysql://rm-2ze16xep4a5xsx1i5no.mysql.rds.aliyuncs.com:3306/whiteboard?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai}

@@ -17,6 +17,7 @@ public class ClassroomSchemaMigration {
     addColumn("class_sync_room", "max_rtc_seats", "INT NOT NULL DEFAULT 3 AFTER status");
     addColumn("class_sync_room", "started_at", "DATETIME NULL AFTER max_rtc_seats");
     addColumn("class_sync_room", "ended_at", "DATETIME NULL AFTER started_at");
+    addColumn("class_sync_room", "teacher_heartbeat_at", "DATETIME(3) NULL AFTER ended_at");
     addColumn("class_sync_room_member", "presence_status", "VARCHAR(32) NOT NULL DEFAULT 'OFFLINE' AFTER student_id");
     addColumn("class_sync_room_member", "joined_at", "DATETIME NULL AFTER presence_status");
     addColumn("class_sync_room_member", "left_at", "DATETIME NULL AFTER joined_at");

@@ -48,6 +48,56 @@ CREATE TABLE IF NOT EXISTS teaching_paper (
   KEY idx_teaching_paper_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS organizer_paper_workspace (
+  id VARCHAR(64) NOT NULL PRIMARY KEY,
+  paper_id VARCHAR(64) NOT NULL,
+  organizer_id VARCHAR(64) NOT NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'processing',
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  UNIQUE KEY uk_organizer_workspace_paper (paper_id),
+  KEY idx_organizer_workspace_user (organizer_id, updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS organizer_question_set (
+  id VARCHAR(64) NOT NULL PRIMARY KEY,
+  organizer_id VARCHAR(64) NOT NULL,
+  product_id VARCHAR(64) NULL,
+  title VARCHAR(255) NOT NULL,
+  description TEXT NOT NULL,
+  subject VARCHAR(64) NOT NULL,
+  grade VARCHAR(64) NOT NULL,
+  collection_type VARCHAR(32) NOT NULL DEFAULT 'topic',
+  topic_label VARCHAR(128) NOT NULL DEFAULT '',
+  price DECIMAL(10,2) NOT NULL DEFAULT 0,
+  status VARCHAR(32) NOT NULL DEFAULT 'draft',
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  KEY idx_organizer_question_set_user (organizer_id, updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS organizer_question_set_item (
+  set_id VARCHAR(64) NOT NULL,
+  question_id VARCHAR(64) NOT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  PRIMARY KEY (set_id, question_id),
+  KEY idx_organizer_set_item_sort (set_id, sort_order)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS question_set_purchase (
+  id VARCHAR(64) NOT NULL PRIMARY KEY,
+  question_set_id VARCHAR(64) NOT NULL,
+  teacher_id VARCHAR(64) NOT NULL,
+  amount DECIMAL(10,2) NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  payment_trade_no VARCHAR(128) NULL,
+  paid_at DATETIME(3) NULL,
+  created_at DATETIME(3) NOT NULL,
+  updated_at DATETIME(3) NOT NULL,
+  KEY idx_qset_purchase_teacher (teacher_id,status,created_at),
+  KEY idx_qset_purchase_set (question_set_id,status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS teaching_question (
   id VARCHAR(64) NOT NULL PRIMARY KEY,
   paper_id VARCHAR(64) NOT NULL,
@@ -101,9 +151,54 @@ CREATE TABLE IF NOT EXISTS paper_page (
   height INT NOT NULL DEFAULT 0,
   quality_score INT NOT NULL DEFAULT 0,
   status VARCHAR(32) NOT NULL DEFAULT 'uploaded',
+  page_source_type VARCHAR(32) NOT NULL DEFAULT 'image',
+  parse_strategy VARCHAR(48) NOT NULL DEFAULT 'full_ocr',
+  has_text_layer TINYINT NOT NULL DEFAULT 0,
+  native_text_score INT NOT NULL DEFAULT 0,
+  image_coverage DECIMAL(6,4) NOT NULL DEFAULT 0,
+  inspection_json JSON NULL,
   created_at DATETIME NOT NULL,
   updated_at DATETIME NOT NULL,
   UNIQUE KEY uk_paper_page_number (paper_id, page_number)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS paper_stage_execution (
+  id VARCHAR(64) NOT NULL PRIMARY KEY,
+  job_id VARCHAR(64) NOT NULL,
+  paper_id VARCHAR(64) NOT NULL,
+  stage VARCHAR(64) NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  attempt INT NOT NULL DEFAULT 1,
+  provider VARCHAR(64) NOT NULL DEFAULT '',
+  input_json JSON NULL,
+  output_json JSON NULL,
+  error_code VARCHAR(64) NOT NULL DEFAULT '',
+  error_message VARCHAR(1024) NOT NULL DEFAULT '',
+  started_at DATETIME(3) NOT NULL,
+  finished_at DATETIME(3) NULL,
+  created_at DATETIME(3) NOT NULL,
+  updated_at DATETIME(3) NOT NULL,
+  KEY idx_stage_execution_job (job_id, started_at),
+  KEY idx_stage_execution_paper (paper_id, started_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS paper_recognition_report (
+  id VARCHAR(64) NOT NULL PRIMARY KEY,
+  paper_id VARCHAR(64) NOT NULL,
+  job_id VARCHAR(64) NOT NULL,
+  pipeline_version VARCHAR(32) NOT NULL,
+  overall_score INT NOT NULL,
+  native_page_count INT NOT NULL DEFAULT 0,
+  ocr_page_count INT NOT NULL DEFAULT 0,
+  repaired_page_count INT NOT NULL DEFAULT 0,
+  question_count INT NOT NULL DEFAULT 0,
+  manual_review_count INT NOT NULL DEFAULT 0,
+  cross_page_count INT NOT NULL DEFAULT 0,
+  status VARCHAR(32) NOT NULL,
+  report_json JSON NOT NULL,
+  created_at DATETIME(3) NOT NULL,
+  UNIQUE KEY uk_recognition_report_job (job_id),
+  KEY idx_recognition_report_paper (paper_id,created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS paper_ocr_result (
@@ -364,6 +459,7 @@ CREATE TABLE IF NOT EXISTS class_sync_room (
   max_rtc_seats INT NOT NULL DEFAULT 3,
   started_at DATETIME NULL,
   ended_at DATETIME NULL,
+  teacher_heartbeat_at DATETIME(3) NULL,
   created_at DATETIME NOT NULL,
   closed_at DATETIME NULL,
   KEY idx_sync_room_teacher (teacher_id, created_at),

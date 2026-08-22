@@ -1,4 +1,4 @@
-import { Bell, BookOpenCheck, GraduationCap, LogOut, Radio, School, History, LayoutDashboard } from 'lucide-react'
+import { Bell, BookOpenCheck, LogOut, Radio, School, History, LayoutDashboard } from 'lucide-react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useStudentApi } from '../api'
 
@@ -18,10 +18,8 @@ export default function Layout() {
       <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 backdrop-blur">
         <div className="flex h-16 w-full items-center gap-8 px-6 2xl:px-8">
           <div className="flex items-center gap-2.5 font-semibold text-slate-900">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white">
-              <GraduationCap size={20} />
-            </div>
-            <span className="text-[17px]">知学课堂</span>
+            <img className="h-10 w-10 rounded-xl object-cover" src="/brand/bijian-logo.png" alt="笔尖云堂 Logo" />
+            <span className="text-[17px]">笔尖云堂</span>
             <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">学生端</span>
           </div>
 

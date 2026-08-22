@@ -28,7 +28,7 @@ public class AuthService {
     String password = required(input.path("password").asText(), "密码");
     String name = required(input.path("displayName").asText(), "姓名");
     String role = input.path("role").asText("teacher");
-    if (!"teacher".equals(role) && !"student".equals(role)) throw badRequest("不支持的账户角色");
+    if (!"teacher".equals(role) && !"student".equals(role) && !"organizer".equals(role)) throw badRequest("不支持的账户角色");
     if (!mobile.matches("^1\\d{10}$")) throw badRequest("请输入正确的手机号");
     if (password.length() < 8) throw badRequest("密码至少需要 8 位");
     String userId = "user_" + UUID.randomUUID().toString().replace("-", "");

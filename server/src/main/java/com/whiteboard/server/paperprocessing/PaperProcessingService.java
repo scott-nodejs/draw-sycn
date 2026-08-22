@@ -24,6 +24,7 @@ import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import javax.imageio.ImageIO;
+import javax.annotation.PostConstruct;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.slf4j.Logger;
@@ -42,13 +43,50 @@ public class PaperProcessingService {
   private final DeepseekClient deepseek;
   private final DocumentNormalizer normalizer;
   private final PaddleDocLayoutClient layoutClient;
+  private final PageInspector pageInspector;
+  private final StageExecutionService stageExecutions;
+  private final QuestionQualityValidator qualityValidator;
+  private final HybridRecognitionService hybridRecognition;
+  private final QuestionBoundaryResolver boundaryResolver;
+  private final PageImagePreprocessor imagePreprocessor;
+  private final RecognitionReportService recognitionReports;
   private final TransactionTemplate transactions;
 
   public PaperProcessingService(JdbcTemplate jdbc, ObjectMapper json, OcrProviderRouter ocrProviders, DeepseekClient deepseek,
-      DocumentNormalizer normalizer, PaddleDocLayoutClient layoutClient, org.springframework.transaction.PlatformTransactionManager transactionManager) {
+      DocumentNormalizer normalizer, PaddleDocLayoutClient layoutClient, PageInspector pageInspector,
+      StageExecutionService stageExecutions, QuestionQualityValidator qualityValidator,
+      HybridRecognitionService hybridRecognition,
+      QuestionBoundaryResolver boundaryResolver,
+      PageImagePreprocessor imagePreprocessor,
+      RecognitionReportService recognitionReports,
+      org.springframework.transaction.PlatformTransactionManager transactionManager) {
     this.jdbc = jdbc; this.json = json; this.ocrProviders = ocrProviders; this.deepseek = deepseek; this.normalizer = normalizer;
     this.layoutClient = layoutClient;
+    this.pageInspector = pageInspector; this.stageExecutions = stageExecutions; this.qualityValidator = qualityValidator;
+    this.hybridRecognition = hybridRecognition;
+    this.boundaryResolver = boundaryResolver;
+    this.imagePreprocessor = imagePreprocessor;
+    this.recognitionReports = recognitionReports;
     this.transactions = new TransactionTemplate(transactionManager);
+  }
+
+  @PostConstruct
+  public void recoverConfigurationFailures() {
+    int recovered = jdbc.update("UPDATE teaching_parse_job SET status='queued',stage='queued',progress=0,error_code='',error_message='',retry_count=0,next_retry_at=NULL,locked_at=NULL,updated_at=? WHERE status='failed' AND error_code='PADDLEOCR_NOT_CONFIGURED'", now());
+    if (recovered > 0) log.info("Recovered {} paper jobs after PaddleOCR configuration became available", recovered);
+    List<Map<String, Object>> legacy = jdbc.query("SELECT j.id,j.paper_id,j.request_id,j.result_object_key FROM teaching_parse_job j WHERE j.provider='paddleocr' AND j.status='review' AND NOT EXISTS (SELECT 1 FROM teaching_question q WHERE q.paper_id=j.paper_id AND q.review_status='confirmed')",
+      (rs, n) -> { Map<String,Object> row=new LinkedHashMap<>(); row.put("id",rs.getString("id")); row.put("paperId",rs.getString("paper_id")); row.put("requestId",rs.getString("request_id")); row.put("resultKey",rs.getString("result_object_key")); return row; });
+    for (Map<String,Object> item : legacy) {
+      try {
+        Path markdown = Paths.get(string(item.get("resultKey")));
+        Path layoutPath = markdown.getParent().resolve("content-list.json");
+        JsonNode layout = json.readTree(layoutPath.toFile());
+        if (!layout.isArray() || layout.size() == 0 || layout.get(0).has("coordinateWidth")) continue;
+        jdbc.update("UPDATE teaching_parse_job SET status='processing',stage='ocr_running',progress=45,error_code='',error_message='',locked_at=NULL,updated_at=? WHERE id=?", now(), item.get("id"));
+        jdbc.update("UPDATE teaching_paper SET status='processing',progress=45,updated_at=? WHERE id=?", now(), item.get("paperId"));
+        log.info("Queued legacy PaddleOCR coordinate repair: jobId={}, paperId={}", item.get("id"), item.get("paperId"));
+      } catch (Exception error) { log.warn("Could not inspect legacy PaddleOCR coordinates for job {}", item.get("id"), error); }
+    }
   }
 
   @Scheduled(fixedDelayString = "${PAPER_PROCESSING_INTERVAL_MS:5000}")
@@ -74,49 +112,73 @@ public class PaperProcessingService {
       if (sources.isEmpty()) throw new ProviderException("SOURCE_FILES_MISSING", "找不到试卷源文件");
       log.info("Paper normalization starting: jobId={}, paperId={}, sourceCount={}", jobId, paperId, sources.size());
       jdbc.update("UPDATE teaching_parse_job SET status='processing',stage='normalizing',progress=5,updated_at=? WHERE id=?", now(), jobId);
+      String normalizationExecution = stageExecutions.start(jobId, paperId, "normalizing", "pdfbox");
       int pages = normalizer.normalize(paperId, sources, paperDirectory(paperId));
+      stageExecutions.complete(normalizationExecution, "{\"pageCount\":" + pages + "}");
       log.info("Paper normalization completed: jobId={}, paperId={}, pageCount={}", jobId, paperId, pages);
+      String preprocessingExecution = stageExecutions.start(jobId, paperId, "image_preprocessing", "local");
+      PageImagePreprocessor.Summary preprocessing = imagePreprocessor.process(paperId, paperDirectory(paperId));
+      stageExecutions.complete(preprocessingExecution, "{\"pageCount\":" + preprocessing.pages + ",\"repairedPages\":" + preprocessing.repaired + ",\"averageScore\":" + preprocessing.averageScore + "}");
+      jdbc.update("UPDATE teaching_parse_job SET stage='page_inspection',progress=15,updated_at=? WHERE id=?", now(), jobId);
+      String inspectionExecution = stageExecutions.start(jobId, paperId, "page_inspection", "pdfbox");
+      pageInspector.inspect(paperId, sources);
+      stageExecutions.complete(inspectionExecution, "{\"pageCount\":" + pages + "}");
       log.info("Submitting paper to OCR provider: provider={}, jobId={}, paperId={}", provider.name(), jobId, paperId);
-      String batchId = provider.submit(sources, paperId);
+      String nativeExecution = stageExecutions.start(jobId, paperId, "native_extraction", "pdfbox");
+      HybridRecognitionService.Submission submission = hybridRecognition.submit(paperId, sources, paperDirectory(paperId), provider);
+      String batchId = submission.requestId;
+      stageExecutions.complete(nativeExecution, "{\"nativePages\":" + submission.nativePages + ",\"ocrPages\":" + submission.ocrPages + "}");
+      if (submission.ocrPages > 0) stageExecutions.start(jobId, paperId, "ocr", provider.name());
       log.info("Paper submitted to OCR provider: provider={}, jobId={}, paperId={}, externalTaskId={}", provider.name(), jobId, paperId, batchId);
       jdbc.update("UPDATE teaching_parse_job SET provider=?,stage='ocr_running',progress=25,request_id=?,locked_at=NULL,error_code='',error_message='',updated_at=? WHERE id=?", provider.name(), batchId, now(), jobId);
       jdbc.update("UPDATE teaching_paper SET page_count=?,progress=25,status='processing',updated_at=? WHERE id=?", pages, now(), paperId); return;
     }
-    if ("normalizing".equals(stage)) {
+    if ("normalizing".equals(stage) || "page_inspection".equals(stage)) {
       log.warn("Recovering interrupted normalization: jobId={}, paperId={}", jobId, paperId);
       jdbc.update("UPDATE teaching_parse_job SET stage='queued',locked_at=NULL,updated_at=? WHERE id=?", now(), jobId); return;
     }
     if ("ocr_running".equals(stage) || "mineru_running".equals(stage)) {
       OcrProvider provider = ocrProviders.byName("mineru_running".equals(stage) ? "mineru" : string(job.get("provider")));
       log.info("Polling OCR provider: provider={}, jobId={}, paperId={}, externalTaskId={}", provider.name(), jobId, paperId, job.get("requestId"));
-      OcrProvider.PollResult result = provider.poll(string(job.get("requestId")));
+      HybridRecognitionService.PollOutcome poll = hybridRecognition.poll(paperId, paperDirectory(paperId), provider, string(job.get("requestId")));
+      OcrProvider.PollResult result = poll.result;
+      if (poll.resubmitted) jdbc.update("UPDATE teaching_parse_job SET request_id=?,updated_at=? WHERE id=?", poll.requestId, now(), jobId);
       if (!result.done) { log.info("OCR provider still processing: provider={}, jobId={}, paperId={}", provider.name(), jobId, paperId); unlock(jobId, 45); updatePaperProgress(paperId, 45); return; }
       Path directory = paperDirectory(paperId); Files.createDirectories(directory);
       Path rawPath = directory.resolve(provider.name() + "-result.json"); json.writeValue(rawPath.toFile(), result.raw);
-      OcrProvider.DocumentArtifacts artifacts = provider.downloadDocumentArtifacts(result, directory.resolve(provider.name() + "-assets"));
+      OcrProvider.DocumentArtifacts artifacts = hybridRecognition.complete(paperId, directory, provider, result, directory.resolve(provider.name() + "-assets"));
       Path markdownPath = directory.resolve("ocr.md"); Path layoutPath = directory.resolve("content-list.json");
       Files.write(markdownPath, artifacts.markdown.getBytes(StandardCharsets.UTF_8)); json.writeValue(layoutPath.toFile(), artifacts.layout);
       Timestamp current = now();
       jdbc.update("INSERT INTO paper_ocr_result (id,paper_id,provider,provider_task_id,model_version,markdown_object_key,raw_result_object_key,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,'done',?,?)",
-        id("ocr"), paperId, provider.name(), string(job.get("requestId")), "vlm", markdownPath.toString(), rawPath.toString(), current, current);
+        id("ocr"), paperId, provider.name(), string(job.get("requestId")), "hybrid-v3", markdownPath.toString(), rawPath.toString(), current, current);
+      stageExecutions.completeRunning(jobId, "ocr", "{\"provider\":\"" + provider.name() + "\"}");
       jdbc.update("UPDATE teaching_parse_job SET stage='deepseek_pending',progress=65,result_object_key=?,locked_at=NULL,updated_at=? WHERE id=?", markdownPath.toString(), now(), jobId);
       updatePaperProgress(paperId, 65); return;
     }
     if ("deepseek_pending".equals(stage)) {
       log.info("DeepSeek structuring starting: jobId={}, paperId={}", jobId, paperId);
+      String semanticExecution = stageExecutions.start(jobId, paperId, "question_segmentation", "deepseek");
       Map<String, Object> paper = jdbc.queryForMap("SELECT subject,grade FROM teaching_paper WHERE id=?", paperId);
       Path markdownPath = Paths.get(jdbc.queryForObject("SELECT result_object_key FROM teaching_parse_job WHERE id=?", String.class, jobId));
       String markdown = new String(Files.readAllBytes(markdownPath), StandardCharsets.UTF_8);
       if (markdown.length() > 180000) throw new ProviderException("OCR_RESULT_TOO_LARGE", "OCR 文本过长，需要按页拆分处理");
       JsonNode layout = json.readTree(markdownPath.getParent().resolve("content-list.json").toFile());
+      String layoutExecution = stageExecutions.start(jobId, paperId, "layout_detection", "pp-structure-v3");
       ArrayNode structureLayout = layoutClient.analyze(normalizedPageFiles(paperId));
       if (structureLayout != null && structureLayout.size() > 0) {
         json.writeValue(markdownPath.getParent().resolve("pp-doclayout.json").toFile(), structureLayout);
         layout = mergeVlTextWithStructureLayout(layout, structureLayout);
       }
+      stageExecutions.complete(layoutExecution, "{\"blockCount\":" + (structureLayout == null ? 0 : structureLayout.size()) + "}");
       ArrayNode normalizedLayout = compactLayout(paperId, layout);
       JsonNode structured = deepseek.structureQuestions(markdown, normalizedLayout, string(paper.get("subject")), string(paper.get("grade")));
-      correctSourceRegions(structured, normalizedLayout);
+      boundaryResolver.resolve(structured, normalizedLayout);
+      qualityValidator.validate(structured);
+      String qualityExecution = stageExecutions.start(jobId, paperId, "quality_assurance", "local");
+      ObjectNode qualityReport = recognitionReports.create(jobId, paperId, structured);
+      stageExecutions.complete(qualityExecution, json.writeValueAsString(qualityReport));
+      stageExecutions.complete(semanticExecution, "{\"questionCount\":" + structured.path("questions").size() + "}");
       transactions.executeWithoutResult(status -> { try { persistQuestions(paperId, structured.path("questions")); } catch (Exception error) { throw new IllegalStateException(error); } });
       Path structuredPath = paperDirectory(paperId).resolve("structured-questions.json"); json.writeValue(structuredPath.toFile(), structured);
       int count = structured.path("questions").size();
@@ -133,9 +195,12 @@ public class PaperProcessingService {
     for (JsonNode item : questions) {
       int number = item.path("number").asInt(); String questionId = id("question");
       ObjectNode cropData = createQuestionCrops(paperId, questionId, item.path("sourceRegions"), item.path("figureRegions"));
+      cropData.set("boundaryQuality", item.path("boundaryQuality").deepCopy());
+      cropData.set("warnings", item.path("warnings").deepCopy());
+      String reviewStatus = item.path("boundaryQuality").path("requiresManualReview").asBoolean() ? "needs_attention" : "review";
       Map<String, Object> snapshot = new LinkedHashMap<>(); snapshot.put("number", number); snapshot.put("type", item.path("type").asText()); snapshot.put("stem", item.path("stem").asText()); snapshot.put("options", item.path("options")); snapshot.put("answer", item.path("answer").asText()); snapshot.put("analysis", item.path("analysis").asText()); snapshot.put("points", item.path("points").asDouble(0)); snapshot.put("confidence", clamp(item.path("confidence").asInt(0))); snapshot.put("difficulty", normalizeDifficulty(item.path("difficulty").asText())); snapshot.put("cropData", cropData);
-      jdbc.update("INSERT INTO teaching_question (id,paper_id,question_number,question_type,stem,options_json,answer,analysis,points,confidence,difficulty,review_status,teaching_status,crop_regions_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,'review','unrecorded',?,?,?)",
-        questionId, paperId, number, normalizeType(item.path("type").asText()), item.path("stem").asText(), json.writeValueAsString(item.path("options")), item.path("answer").asText(), item.path("analysis").asText(), item.path("points").asDouble(0), clamp(item.path("confidence").asInt(0)), normalizeDifficulty(item.path("difficulty").asText()), json.writeValueAsString(cropData), current, current);
+      jdbc.update("INSERT INTO teaching_question (id,paper_id,question_number,question_type,stem,options_json,answer,analysis,points,confidence,difficulty,review_status,teaching_status,crop_regions_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'unrecorded',?,?,?)",
+        questionId, paperId, number, normalizeType(item.path("type").asText()), item.path("stem").asText(), json.writeValueAsString(item.path("options")), item.path("answer").asText(), item.path("analysis").asText(), item.path("points").asDouble(0), clamp(item.path("confidence").asInt(0)), normalizeDifficulty(item.path("difficulty").asText()), reviewStatus, json.writeValueAsString(cropData), current, current);
       jdbc.update("INSERT INTO question_revision (id,question_id,version,snapshot_json,change_source,created_at) VALUES (?,?,0,?,'AI_STRUCTURING',?)", id("revision"), questionId, json.writeValueAsString(snapshot), current);
     }
   }
@@ -199,12 +264,22 @@ public class PaperProcessingService {
       ObjectNode block = blocks.addObject(); block.put("pageNumber", pageNumber); block.set("bbox", normalizedBox); block.put("type", figure ? "figure" : "text"); block.put("text", text.length() > 2000 ? text.substring(0, 2000) : text);
       if (figure && item.hasNonNull("localImagePath")) block.put("objectKey", item.path("localImagePath").asText());
     }
-    return blocks;
+    return splitCompoundQuestionBlocks(blocks);
+  }
+
+  private ArrayNode splitCompoundQuestionBlocks(ArrayNode blocks) {
+    ArrayNode result=json.createArrayNode();Pattern starts=Pattern.compile("(?m)^\\s*(\\d{1,3})\\s*[.．、。)）:]");
+    for(JsonNode block:blocks){String text=block.path("text").asText();Matcher matcher=starts.matcher(text);List<Integer> offsets=new ArrayList<>();while(matcher.find())offsets.add(matcher.start());
+      if(offsets.size()<2||!validBox(block.path("bbox"))){result.add(block);continue;}JsonNode box=block.path("bbox");int top=box.get(1).asInt(),bottom=box.get(3).asInt();
+      for(int index=0;index<offsets.size();index++){int from=offsets.get(index),to=index+1<offsets.size()?offsets.get(index+1):text.length();String fragment=text.substring(from,to).trim();if(fragment.isEmpty())continue;ObjectNode copy=block.deepCopy();copy.put("text",fragment);int y0=top+Math.round((bottom-top)*(from/(float)Math.max(1,text.length())));int y1=top+Math.round((bottom-top)*(to/(float)Math.max(1,text.length())));ArrayNode fragmentBox=copy.putArray("bbox");fragmentBox.add(box.get(0).asInt()).add(y0).add(box.get(2).asInt()).add(Math.max(y0+4,y1));result.add(copy);}
+      log.info("Compound OCR block split: page={}, questionFragments={}, originalBounds={}",block.path("pageNumber").asInt(),offsets.size(),box);
+    }return result;
   }
 
   private ArrayNode mergeVlTextWithStructureLayout(JsonNode vlLayout, ArrayNode structureLayout) {
     ArrayNode merged = json.createArrayNode();
     List<JsonNode> structureFigures = new ArrayList<>();
+    List<JsonNode> usedStructureFigures = new ArrayList<>();
     for (JsonNode block : structureLayout) if (isVisualLayoutBlock(block)) structureFigures.add(block);
     int vlFigures = 0, matchedFigures = 0;
     // PaddleOCR-VL remains authoritative for text and image assets. Structure only corrects figure coordinates.
@@ -214,10 +289,15 @@ public class PaperProcessingService {
         if (isVisualLayoutBlock(block)) {
           vlFigures++;
           JsonNode match = bestOverlappingFigure(block, structureFigures);
-          if (match != null) { copy.set("bbox", match.path("bbox").deepCopy()); matchedFigures++; }
+          if (match != null) { copy.set("bbox", match.path("bbox").deepCopy()); usedStructureFigures.add(match); matchedFigures++; }
         }
         merged.add(copy);
       }
+    }
+    // Native-PDF pages have text blocks but no raster figure assets. Preserve unmatched
+    // layout figures so deterministic question regions still include diagrams and charts.
+    for (JsonNode figure : structureFigures) if (!usedStructureFigures.contains(figure)) {
+      ObjectNode copy = figure.deepCopy(); copy.put("type", "figure"); copy.put("text", ""); merged.add(copy);
     }
     log.info("Hybrid layout assembled: vlBlocks={}, vlFigures={}, structureFigures={}, matchedFigures={}, total={}",
       vlLayout != null && vlLayout.isArray() ? vlLayout.size() : 0, vlFigures, structureFigures.size(), matchedFigures, merged.size());
@@ -398,8 +478,13 @@ public class PaperProcessingService {
 
   public Map<String, Object> status(String paperId, String userId) {
     assertOwner(paperId, userId);
-    return jdbc.queryForObject("SELECT id,paper_id,status,stage,progress,provider,request_id,error_code,error_message,retry_count,updated_at FROM teaching_parse_job WHERE paper_id=? ORDER BY created_at DESC LIMIT 1",
+    Map<String,Object> result = jdbc.queryForObject("SELECT id,paper_id,status,stage,progress,provider,request_id,error_code,error_message,retry_count,updated_at FROM teaching_parse_job WHERE paper_id=? ORDER BY created_at DESC LIMIT 1",
       (rs, n) -> { Map<String, Object> row = new LinkedHashMap<>(); row.put("jobId", rs.getString("id")); row.put("paperId", rs.getString("paper_id")); row.put("status", rs.getString("status")); row.put("stage", rs.getString("stage")); row.put("progress", rs.getInt("progress")); row.put("provider", rs.getString("provider")); row.put("externalTaskId", rs.getString("request_id")); row.put("errorCode", rs.getString("error_code")); row.put("errorMessage", rs.getString("error_message")); row.put("retryCount", rs.getInt("retry_count")); row.put("updatedAt", rs.getTimestamp("updated_at")); return row; }, paperId);
+    String jobId=string(result.get("jobId"));
+    result.put("stages",jdbc.query("SELECT stage,status,attempt,provider,error_code,error_message,started_at,finished_at FROM paper_stage_execution WHERE job_id=? ORDER BY started_at",(rs,n)->{Map<String,Object> row=new LinkedHashMap<>();row.put("stage",rs.getString("stage"));row.put("status",rs.getString("status"));row.put("attempt",rs.getInt("attempt"));row.put("provider",rs.getString("provider"));row.put("errorCode",rs.getString("error_code"));row.put("errorMessage",rs.getString("error_message"));row.put("startedAt",rs.getTimestamp("started_at"));row.put("finishedAt",rs.getTimestamp("finished_at"));return row;},jobId));
+    result.put("pages",jdbc.query("SELECT page_number,page_source_type,parse_strategy,has_text_layer,native_text_score,image_coverage,status FROM paper_page WHERE paper_id=? ORDER BY page_number",(rs,n)->{Map<String,Object> row=new LinkedHashMap<>();row.put("pageNumber",rs.getInt("page_number"));row.put("sourceType",rs.getString("page_source_type"));row.put("strategy",rs.getString("parse_strategy"));row.put("hasTextLayer",rs.getBoolean("has_text_layer"));row.put("nativeTextScore",rs.getInt("native_text_score"));row.put("imageCoverage",rs.getBigDecimal("image_coverage"));row.put("status",rs.getString("status"));return row;},paperId));
+    result.put("qualityReport",recognitionReports.latest(jobId));
+    return result;
   }
 
   public Map<String, Object> retry(String paperId, String userId) {
@@ -415,6 +500,7 @@ public class PaperProcessingService {
     int retry = ((Number) job.get("retryCount")).intValue() + 1;
     String code = cause instanceof ProviderException ? ((ProviderException) cause).getCode() : "PROCESSING_ERROR";
     String message = cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage();
+    stageExecutions.failRunning(string(job.get("id")), code, message);
     boolean terminal = retry >= 3 || code.endsWith("NOT_CONFIGURED") || "PAPER_ALREADY_REVIEWED".equals(code);
     log.warn("Paper job state updated after failure: jobId={}, paperId={}, code={}, retryCount={}, terminal={}, message={}",
       job.get("id"), job.get("paperId"), code, retry, terminal, message);

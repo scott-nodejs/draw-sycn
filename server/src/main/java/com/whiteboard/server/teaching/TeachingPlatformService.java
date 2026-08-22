@@ -439,7 +439,7 @@ public class TeachingPlatformService {
   }
 
   public List<Map<String, Object>> listProducts(String status, String teacherId) {
-    String sql = "SELECT * FROM learning_product WHERE (?='' OR status=?) AND (?='' OR teacher_id=?) " +
+    String sql = "SELECT * FROM learning_product WHERE product_type<>'试题集' AND (?='' OR status=?) AND (?='' OR teacher_id=?) " +
       "ORDER BY COALESCE(published_at, created_at) DESC";
     List<Map<String, Object>> products = jdbc.query(sql, (rs, rowNum) -> productRow(rs), safe(status), safe(status),
       safe(teacherId), safe(teacherId));
@@ -457,8 +457,9 @@ public class TeachingPlatformService {
     String status = input.path("status").asText("draft");
     if (!Arrays.asList("draft", "reviewing", "published", "offline").contains(status)) throw badRequest("非法商品状态");
     List<String> recordingIds = stringList(input.path("recordingAssetIds"));
-    if ("published".equals(status) && recordingIds.isEmpty()) throw badRequest("发布商品至少需要一个录制资产");
-    if ("published".equals(status)) validateRecordingAssets(recordingIds);
+    List<String> questionIds = stringList(input.path("questionIds"));
+    if ("published".equals(status) && recordingIds.isEmpty()) throw badRequest("发布内容商品至少需要一个录制课件");
+    if ("published".equals(status) && !recordingIds.isEmpty()) validateRecordingAssets(recordingIds);
     String previewMode = input.path("previewMode").asText("first");
     if (!Arrays.asList("first", "selected").contains(previewMode)) throw badRequest("非法试看策略");
     int freeQuestionCount = Math.max(0, input.path("freeQuestionCount").asInt(0));
@@ -487,7 +488,7 @@ public class TeachingPlatformService {
         json(input.path("previewQuestionIds")), "published".equals(status) ? Timestamp.valueOf(now) : null,
         Timestamp.valueOf(now), Timestamp.valueOf(now));
     }
-    replaceProductRelations(productId, stringList(input.path("questionIds")), recordingIds);
+    replaceProductRelations(productId, questionIds, recordingIds);
     return getProduct(productId);
   }
 
@@ -599,6 +600,8 @@ public class TeachingPlatformService {
     JsonNode cropData;
     try { cropData = objectMapper.readTree(rs.getString("crop_regions_json")); } catch (Exception error) { cropData = objectMapper.createObjectNode(); }
     row.put("sourceRegions", cropData.path("regions"));
+    row.put("boundaryQuality", cropData.path("boundaryQuality"));
+    row.put("warnings", cropData.path("warnings"));
     if (cropData.has("presentationLayout")) row.put("presentationLayout", cropData.path("presentationLayout"));
     List<String> cropUrls = new ArrayList<>(); for (int i = 0; i < cropData.path("assets").size(); i++) cropUrls.add("/api/questions/" + rs.getString("id") + "/crops/" + i);
     row.put("cropUrls", cropUrls);

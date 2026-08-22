@@ -3,6 +3,9 @@ ALTER TABLE class_sync_room
   ADD COLUMN started_at DATETIME NULL AFTER max_rtc_seats,
   ADD COLUMN ended_at DATETIME NULL AFTER started_at;
 
+ALTER TABLE class_sync_room
+  ADD COLUMN teacher_heartbeat_at DATETIME(3) NULL AFTER ended_at;
+
 ALTER TABLE class_sync_room_member
   ADD COLUMN presence_status VARCHAR(32) NOT NULL DEFAULT 'OFFLINE' AFTER student_id,
   ADD COLUMN joined_at DATETIME NULL AFTER presence_status,

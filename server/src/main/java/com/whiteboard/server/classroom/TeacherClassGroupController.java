@@ -20,6 +20,7 @@ public class TeacherClassGroupController {
   @GetMapping("/class-groups/{id}/assignments") public List<Map<String,Object>> assignments(@PathVariable String id, @RequestHeader("X-User-Id") String teacherId) { return service.teacherAssignments(id, teacherId); }
   @GetMapping("/class-assignments/{id}/submissions") public List<Map<String,Object>> submissions(@PathVariable String id, @RequestHeader("X-User-Id") String teacherId) { return service.submissions(id, teacherId); }
   @PostMapping("/class-groups/{id}/sync-rooms") @ResponseStatus(HttpStatus.CREATED) public Map<String,Object> createSyncRoom(@PathVariable String id, @RequestBody JsonNode input, @RequestHeader("X-User-Id") String teacherId) { return service.createSyncRoom(id, input, teacherId); }
+  @GetMapping("/sync-rooms") public List<Map<String,Object>> syncRooms(@RequestHeader("X-User-Id") String teacherId) { return service.teacherSyncRooms(teacherId); }
   @PutMapping("/sync-rooms/{id}/current-question") public Map<String,Object> updateCurrentQuestion(@PathVariable String id, @RequestBody JsonNode input, @RequestHeader("X-User-Id") String teacherId) { return service.updateCurrentQuestion(id, input.path("questionId").asText(), teacherId); }
   @PostMapping("/sync-rooms/{id}/close") @ResponseStatus(HttpStatus.NO_CONTENT) public void closeSyncRoom(@PathVariable String id, @RequestHeader("X-User-Id") String teacherId) { service.closeSyncRoom(id, teacherId); }
 }

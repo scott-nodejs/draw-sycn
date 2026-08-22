@@ -24,6 +24,7 @@ async function request<T>(path:string, init:RequestInit = {}):Promise<T> {
   const userId = localStorage.getItem(USER_ID_KEY)
   if (token) headers.set('Authorization', `Bearer ${token}`)
   if (userId) headers.set('X-User-Id', userId)
+  headers.set('X-User-Role', 'student')
   const response = await fetch(`${API_BASE}${path}`, { ...init, headers })
   const payload = await response.json().catch(()=>null)
   if (!response.ok) throw new Error(payload?.message || payload?.error || `请求失败 (${response.status})`)
@@ -66,7 +67,7 @@ export function StudentApiProvider({children}:{children:ReactNode}) {
       request<RawAssignment[]>('/student/class-assignments'), request<RawRoom[]>('/student/sync-rooms'), request<RawClass[]>('/student/class-groups'),
     ])
     setTasks(assignmentRows.map(item=>({id:item.id,type:item.contentType==='paper'?'试卷':'单题',title:item.title,teacher:item.teacherName||item.groupName,clazz:item.groupName,publish:item.createdAt.replace('T',' ').slice(5,16),deadline:item.scheduledAt?.replace('T',' ').slice(5,16)||'未设置',status:item.status==='scheduled'?'未开始':'进行中',progress:0,questions:item.contentType==='paper'?0:1})))
-    const nextRooms=roomRows.filter(item=>item.status!=='ENDED').map(item=>({id:item.id,name:item.title,teacher:item.teacherName,clazz:item.groupName,time:item.createdAt.replace('T',' ').slice(5,16),status:item.status==='ACTIVE'?'进行中':'未开始',online:0,currentQuestion:item.currentQuestion?{...item.currentQuestion,options:parseOptions(item.currentQuestion.optionsJson),figureUrls:item.currentQuestion.figureUrls||[],presentationLayout:parsePresentationLayout(item.currentQuestion.presentationLayoutJson)}:null}))
+    const nextRooms=roomRows.map(item=>({id:item.id,name:item.title,teacher:item.teacherName,clazz:item.groupName,time:item.createdAt.replace('T',' ').slice(5,16),status:item.status==='ACTIVE'?'进行中':item.status==='ENDED'?'已结束':'未开始',online:0,currentQuestion:item.currentQuestion?{...item.currentQuestion,options:parseOptions(item.currentQuestion.optionsJson),figureUrls:item.currentQuestion.figureUrls||[],presentationLayout:parsePresentationLayout(item.currentQuestion.presentationLayoutJson)}:null}))
     if(knownRoomIds.current){const added=nextRooms.find(item=>!knownRoomIds.current?.has(item.id));if(added)setNewRoom(added)}
     knownRoomIds.current=new Set(nextRooms.map(item=>item.id))
     setRooms(nextRooms)

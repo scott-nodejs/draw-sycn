@@ -9,11 +9,16 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "desktop:dev": "node scripts/electron-dev.mjs",
-    "desktop:build": "npm run build && electron-builder"
+    "desktop:build": "npm run build && electron-builder",
+    "mobile:sync": "npm run build && cap sync",
+    "mobile:android": "npm run mobile:sync && cap open android",
+    "mobile:ios": "npm run mobile:sync && cap open ios",
+    "mobile:run:android": "npm run build && cap run android",
+    "mobile:run:ios": "npm run build && cap run ios"
   },
   "build": {
     "appId": "com.zhiwen.student",
-    "productName": "知问课堂学生端",
+    "productName": "笔尖云堂学生端",
     "files": [
       "dist/**/*",
       "electron/**/*",
@@ -36,6 +41,11 @@
     }
   },
   "dependencies": {
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/keyboard": "^8.0.5",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.3",
     "@tldraw/sync": "^4.5.12",
     "katex": "^0.18.4",
     "lucide-react": "^0.468.0",
@@ -50,6 +60,9 @@
     "trtc-sdk-v5": "^5.19.1"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/ios": "^8.5.0",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",

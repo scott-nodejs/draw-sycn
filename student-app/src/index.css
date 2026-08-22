@@ -11,7 +11,9 @@
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; min-height: 100vh; background: #f5f8fc; }
+html { background: #f5f8fc; }
+body { margin: 0; min-width: 320px; min-height: 100vh; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); background: #f5f8fc; overscroll-behavior: none; }
+main.min-h-screen section>div:first-child>span{background:#fff url('/brand/bijian-logo.png') center/150% auto no-repeat!important;color:transparent!important}main.min-h-screen section>div:first-child>span svg{opacity:0}main.min-h-screen section>div:first-child h1{font-size:0}main.min-h-screen section>div:first-child h1:after{content:'笔尖云堂';font-size:16px}
 button, input, select { font: inherit; }
 .question-markdown p, .question-options p { margin: 0; }
 .student-presentation-canvas { position: relative; width: 100%; overflow: hidden; border-radius: 8px; background: #fff; }

@@ -1,113 +1,54 @@
-# Whiteboard Recorder
+# 笔尖云堂
 
-A commercial-grade tldraw whiteboard recording foundation:
+笔尖云堂采用五个一级项目的单仓库结构，各应用可以独立安装、启动与发布。
 
-- Teacher recording
-- Read-only live viewer
-- Snapshot + event-log replay
-- Chunked event protocol
-- Pluggable local/HTTP storage
-- Qiniu Cloud Kodo direct-upload adapter
-- Local API for end-to-end development
+| 项目 | 技术栈 | 说明 |
+| --- | --- | --- |
+| `teacher-app` | React + Vite + Electron + Capacitor | 老师工作台、试卷管理、直播/录制、tldraw 白板 |
+| `student-app` | React + Vite + Electron + Capacitor | 学习平台、同步课堂、任务与回放 |
+| `organizer-app` | Vue + Vite | 试卷上传、AI 解析、人工校对与试题集发行 |
+| `teacher-agent-web` | React + Vite | 面向学习用户的官网、内容商城、付费解锁和时序回放 |
+| `server` | Spring Boot + MySQL | 统一认证、试卷识别、课堂、录制、商品和整理端 API |
 
-## Run Locally
+## 本地启动
 
-Install dependencies:
-
-```bash
-npm install
-```
-
-Local file mode:
-
-```bash
-npm run dev
-```
-
-Commercial closed-loop mode:
-
-```bash
-npm run dev:api
-npm run dev:sync
-```
-
-In another terminal:
-
-```bash
-npm run dev:http
-```
-
-Open the frontend and use:
-
-- `录制` for the teacher whiteboard
-- `观看` for read-only live viewing
-- `同步写` for the official `@tldraw/sync` teacher room
-- `同步看` for the official `@tldraw/sync` read-only viewer room
-- `回放` for recorded package playback
-
-## Key Docs
-
-- `docs/recording-protocol.md`
-- `docs/backend-api.md`
-- `docs/local-commercial-loop.md`
-- `docs/production-roadmap.md`
-- `docs/touchscreen-acceptance.md`
-- `docs/tldraw-sync-architecture.md`
-- `docs/mysql-mybatis-plus.md`
-
-## Java Backend
-
-The `server/` directory contains a Spring Boot 2.7 backend compatible with Java
-8. It implements the same recording and live room API as the local Node server.
-
-Build it:
-
-```bash
-cd server
-mvn -q -s maven-central-settings.xml -DskipTests package
-```
-
-Run it:
+后端：
 
 ```bash
 cd server
 mvn -q -s maven-central-settings.xml spring-boot:run
 ```
 
-It listens on `http://127.0.0.1:8788`. Point the frontend at it with:
+老师端：
 
 ```bash
-VITE_RECORDING_STORAGE=http VITE_RECORDING_API_BASE_URL=http://127.0.0.1:8788/api npm run dev
+cd teacher-app
+npm install
+npm run dev
 ```
 
-The Java backend expects MySQL for metadata:
+学生端：
 
 ```bash
-MYSQL_URL=jdbc:mysql://127.0.0.1:3306/whiteboard?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai
-MYSQL_USERNAME=root
-MYSQL_PASSWORD=...
+cd student-app
+npm install
+npm run dev
 ```
 
-Create tables with:
-
-```sql
-source server/src/main/resources/schema.sql;
-```
-
-Qiniu Kodo direct upload needs these backend environment variables:
+试题整理端：
 
 ```bash
-QINIU_ACCESS_KEY=...
-QINIU_SECRET_KEY=...
-QINIU_BUCKET=...
-QINIU_UPLOAD_URL=https://upload.qiniup.com
-QINIU_PUBLIC_DOMAIN=https://your-domain.example.com
+cd organizer-app
+npm install
+npm run dev
 ```
 
-Then run the frontend with:
+Teacher Agent Web：
 
 ```bash
-VITE_RECORDING_STORAGE=qiniu VITE_RECORDING_API_BASE_URL=http://127.0.0.1:8788/api npm run dev
+cd teacher-agent-web
+npm install
+npm run dev
 ```
 
-The local tldraw sync server persists room snapshots under `data/sync/`.
+Android/iPad 打包见 [MOBILE.md](MOBILE.md)。架构和协议文档统一放在 `docs`。

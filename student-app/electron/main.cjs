@@ -10,7 +10,7 @@ function createWindow() {
     height: 920,
     minWidth: 1080,
     minHeight: 700,
-    title: '知问课堂学生端',
+    title: '笔尖云堂学生端',
     backgroundColor: '#f5f8fc',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),

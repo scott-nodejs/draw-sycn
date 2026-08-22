@@ -12,8 +12,8 @@ while (Date.now() - startedAt < 30_000) {
 }
 
 const electronExecutable = process.platform === 'win32'
-  ? resolve('..', 'node_modules', 'electron', 'dist', 'electron.exe')
-  : resolve('..', 'node_modules', '.bin', 'electron')
+  ? resolve('node_modules', 'electron', 'dist', 'electron.exe')
+  : resolve('node_modules', '.bin', 'electron')
 const electron = spawn(electronExecutable, ['.'], { stdio: 'inherit', shell: false, env: { ...process.env, ELECTRON_DEV: 'true', ELECTRON_DEV_URL: url } })
 electron.on('exit', code => { vite.kill(); process.exit(code ?? 0) })
 process.on('SIGINT', () => { electron.kill(); vite.kill(); process.exit(0) })

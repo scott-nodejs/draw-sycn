@@ -140,14 +140,18 @@ public class PaddleOcrProvider implements OcrProvider {
   }
 
   private void appendLayout(ArrayNode target, JsonNode page, int pageIndex, Map<String, Path> pageImages) {
-    JsonNode blocks = page.path("prunedResult").path("parsing_res_list"); if (!blocks.isArray()) blocks = page.path("parsing_res_list");
+    JsonNode pruned = page.path("prunedResult");
+    JsonNode blocks = pruned.path("parsing_res_list"); if (!blocks.isArray()) blocks = page.path("parsing_res_list");
     if (!blocks.isArray()) return;
+    int coordinateWidth = pruned.path("width").asInt(page.path("width").asInt());
+    int coordinateHeight = pruned.path("height").asInt(page.path("height").asInt());
     java.util.Iterator<Path> imageFallback = pageImages.values().iterator();
     for (JsonNode source : blocks) {
       JsonNode bbox = source.path("block_bbox"); if (!bbox.isArray()) bbox = source.path("bbox"); if (!bbox.isArray() || bbox.size() != 4) continue;
       String label = source.path("block_label").asText(source.path("label").asText()); String text = source.path("block_content").asText(source.path("text").asText());
       String lowerLabel = label.toLowerCase(); boolean figure = lowerLabel.contains("image") || lowerLabel.contains("figure") || lowerLabel.contains("chart");
       ObjectNode block = target.addObject(); block.put("page_idx", pageIndex); block.set("bbox", bbox.deepCopy()); block.put("type", figure ? "image" : "text"); block.put("text", text);
+      if (coordinateWidth > 0 && coordinateHeight > 0) { block.put("coordinateWidth", coordinateWidth); block.put("coordinateHeight", coordinateHeight); }
       if (figure) {
         Path stored = null;
         String normalizedText = text.replace('\\', '/');

@@ -21,10 +21,10 @@ function StudentRoutes() {
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/workbench" element={<Workbench />} />
         <Route path="/live" element={<Live />} />
-        <Route path="/live/room/:id" element={<LiveRoom />} />
         <Route path="/classes" element={<Classes />} />
         <Route path="/records" element={<Records />} />
       </Route>
+      <Route path="/live/room/:id" element={<LiveRoom />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
