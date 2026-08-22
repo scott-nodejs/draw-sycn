@@ -1,0 +1,10 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="cloud" x1="8" y1="14" x2="53" y2="55" gradientUnits="userSpaceOnUse"><stop stop-color="#38C8FF"/><stop offset=".52" stop-color="#1677FF"/><stop offset="1" stop-color="#1746D2"/></linearGradient>
+    <linearGradient id="feather" x1="48" y1="9" x2="23" y2="55" gradientUnits="userSpaceOnUse"><stop stop-color="white"/><stop offset="1" stop-color="#CBE8FF"/></linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="2.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <path d="M14 50h35c6 0 10-4 10-10 0-5-4-9-9-10-2-8-9-14-18-14-8 0-15 5-18 12C7 29 3 33 3 39c0 6 5 11 11 11Z" fill="url(#cloud)" opacity=".96"/>
+  <path d="M47 7c5 10 2 21-7 29-5 4-11 7-16 8 4-4 8-7 10-11-5 3-10 5-16 6 6-6 11-15 20-21 3-3 6-6 9-11Z" fill="url(#feather)" filter="url(#glow)"/>
+  <path d="M28 40 23 48l5 9 5-9-5-8Z" fill="white"/><path d="M28 48v12" stroke="#1746D2" stroke-width="2" stroke-linecap="round"/><circle cx="28" cy="48" r="1.8" fill="#1746D2"/>
+</svg>
