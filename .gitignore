@@ -6,10 +6,12 @@ data/
 server/target/
 *.tsbuildinfo
 *.log
+*.pid
 .DS_Store
 .env
 .env.*
 !.env.example
+!.env.production.example
 .npm-cache/
 .idea/
 .m2/
