@@ -12,9 +12,9 @@ spring:
       max-request-size: 110MB
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: ${MYSQL_URL:jdbc:mysql://rm-2ze16xep4a5xsx1i5no.mysql.rds.aliyuncs.com:3306/whiteboard?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai}
-    username: ${MYSQL_USERNAME:yima}
-    password: ${MYSQL_PASSWORD:4rq57ukzBlIcNuuNGFqe8oOuIWkKhZUd}
+    url: ${MYSQL_URL}
+    username: ${MYSQL_USERNAME}
+    password: ${MYSQL_PASSWORD}
   sql:
     init:
       # This service uses an external MySQL database. Spring otherwise skips
@@ -30,14 +30,14 @@ mybatis-plus:
 
 whiteboard:
   trtc:
-    sdk-app-id: ${TRTC_SDK_APP_ID:1600157974}
+    sdk-app-id: ${TRTC_SDK_APP_ID}
     secret-key: ${TRTC_SECRET_KEY:}
     user-sig-expire-seconds: ${TRTC_USER_SIG_TTL_SECONDS:7200}
   storage-root: ./data/storage/whiteboard
   qiniu:
-    access-key: ${QINIU_ACCESS_KEY:7S_iVr-bCg2TwdpWuo86j1-yFWtTvuwYBY2Sds3H}
-    secret-key: ${QINIU_SECRET_KEY:6jFw93Id_i9Zs0EL2UuO9ibasGttPpDu1jQ2i82N}
-    bucket: ${QINIU_BUCKET:yima-h5}
+    access-key: ${QINIU_ACCESS_KEY:}
+    secret-key: ${QINIU_SECRET_KEY:}
+    bucket: ${QINIU_BUCKET:}
     upload-url: ${QINIU_UPLOAD_URL:https://up-z1.qiniup.com}
     public-domain: ${QINIU_PUBLIC_DOMAIN:}
     token-expire-seconds: ${QINIU_TOKEN_EXPIRE_SECONDS:3600}
