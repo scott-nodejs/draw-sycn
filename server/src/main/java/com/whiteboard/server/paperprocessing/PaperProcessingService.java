@@ -78,8 +78,22 @@ public class PaperProcessingService {
       (rs, n) -> { Map<String,Object> row=new LinkedHashMap<>(); row.put("id",rs.getString("id")); row.put("paperId",rs.getString("paper_id")); row.put("requestId",rs.getString("request_id")); row.put("resultKey",rs.getString("result_object_key")); return row; });
     for (Map<String,Object> item : legacy) {
       try {
-        Path markdown = Paths.get(string(item.get("resultKey")));
-        Path layoutPath = markdown.getParent().resolve("content-list.json");
+        String resultKey = string(item.get("resultKey")).trim();
+        if (resultKey.isEmpty()) {
+          log.info("Skipping legacy PaddleOCR coordinate repair without result path: jobId={}", item.get("id"));
+          continue;
+        }
+        Path markdown = Paths.get(resultKey);
+        Path resultDirectory = markdown.getParent();
+        if (resultDirectory == null) {
+          log.info("Skipping legacy PaddleOCR coordinate repair with incomplete result path: jobId={}, resultKey={}", item.get("id"), resultKey);
+          continue;
+        }
+        Path layoutPath = resultDirectory.resolve("content-list.json");
+        if (!Files.isRegularFile(layoutPath)) {
+          log.info("Skipping legacy PaddleOCR coordinate repair without layout file: jobId={}, layoutPath={}", item.get("id"), layoutPath);
+          continue;
+        }
         JsonNode layout = json.readTree(layoutPath.toFile());
         if (!layout.isArray() || layout.size() == 0 || layout.get(0).has("coordinateWidth")) continue;
         jdbc.update("UPDATE teaching_parse_job SET status='processing',stage='ocr_running',progress=45,error_code='',error_message='',locked_at=NULL,updated_at=? WHERE id=?", now(), item.get("id"));
