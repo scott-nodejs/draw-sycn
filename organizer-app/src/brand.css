@@ -1,1 +1,12 @@
-.brand-mark{width:40px!important;height:40px!important;border:0!important;border-radius:10px!important;background:#fff url('/brand/bijian-logo.png') center/145% auto no-repeat!important;color:transparent!important;box-shadow:none!important}.public-brand b,.logo-row b{font-size:0}.public-brand b:after,.logo-row b:after{content:'笔尖云堂';font-size:16px}.auth-copy>.brand-mark{display:none}.auth-copy>span{font-size:0}.auth-copy>span:after{content:'笔尖云堂 · 内容生产中心';font-size:16px}.auth-shell{background:#03070d url('/brand/bijian-banner.png') center/cover no-repeat!important;position:relative}.auth-shell:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(2,7,15,.08),rgba(2,7,15,.5));pointer-events:none}.auth-shell>*{position:relative;z-index:1}
+.brand-mark{width:40px!important;height:40px!important;border:0!important;border-radius:10px!important;background:#fff url('/brand/bijian-logo.png') center/145% auto no-repeat!important;color:transparent!important;box-shadow:none!important}.public-brand b,.logo-row b{font-size:0}.public-brand b:after,.logo-row b:after{content:'笔尖云堂';font-size:16px}.auth-copy>.brand-mark{display:none}.auth-copy>span{font-size:0}.auth-copy>span:after{content:'笔尖云堂 · 内容生产中心';font-size:16px}
+
+/* 登录页保持蓝白产品风格。品牌图仅作为轻量水印，避免深色 Banner
+   覆盖正文并在宽屏上被放大、裁切。 */
+.auth-shell{background:radial-gradient(circle at 16% 48%,rgba(61,160,255,.18),transparent 30%),linear-gradient(135deg,#f8fbff 0%,#eef6ff 55%,#f7fbff 100%)!important;color:#102449;position:relative;overflow:hidden}
+.auth-shell:before{content:"";position:absolute;left:4vw;top:50%;width:min(48vw,760px);aspect-ratio:1;transform:translateY(-50%);background:url('/brand/bijian-logo.png') center/contain no-repeat;opacity:.11;filter:saturate(1.08);pointer-events:none}
+.auth-shell:after{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(52,122,235,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(52,122,235,.035) 1px,transparent 1px);background-size:32px 32px;mask-image:linear-gradient(90deg,#000,transparent 72%);pointer-events:none}
+.auth-shell>*{position:relative;z-index:1}
+.auth-copy>span,.auth-copy h1{color:#102449}
+.auth-copy p{color:#667996}
+.auth-feature{color:#42658f}
+.auth-back{color:#42658f!important}
