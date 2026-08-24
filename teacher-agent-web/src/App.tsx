@@ -15,6 +15,25 @@ const products: Product[] = [
 
 const replayCanvasComponents = { Toolbar: null, StylePanel: null }
 
+function createClientId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+
+  const bytes = new Uint8Array(16)
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    crypto.getRandomValues(bytes)
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256)
+    }
+  }
+  bytes[6] = (bytes[6] & 0x0f) | 0x40
+  bytes[8] = (bytes[8] & 0x3f) | 0x80
+  const hex = Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
+
 function Brand({ compact = false }: { compact?: boolean }) {
   return <div className={`brand ${compact ? 'brand-compact' : ''}`}><span className="logo-shell"><img src="/bijian-logo-original.png" alt="笔尖云堂" /></span><div><strong>笔尖云堂</strong>{compact ? null : <small>BIJIAN YUNTANG</small>}</div></div>
 }
@@ -35,7 +54,7 @@ export function App() {
   const [selectedQuestion, setSelectedQuestion] = useState(0)
   const [user, setUser] = useState(() => localStorage.getItem('teacher-agent-user') || '')
   const editorRef = useRef<Editor | null>(null)
-  const roomId = useMemo(() => `agent-web-${crypto.randomUUID()}`, [])
+  const roomId = useMemo(() => `agent-web-${createClientId()}`, [])
 
   const requireLogin = (target: View) => { if (!user) { setPendingView(target); setView('login'); return false } setView(target); return true }
   const start = () => { const value = input.trim(); if (!value) return; setProblem(value); if (requireLogin('solve')) setView('solve') }
