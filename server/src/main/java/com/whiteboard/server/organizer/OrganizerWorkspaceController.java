@@ -49,7 +49,25 @@ public class OrganizerWorkspaceController {
 
   @GetMapping("/questions")
   public List<Map<String, Object>> confirmedQuestions(@RequestHeader("X-User-Id") String userId) {
-    return teaching.listAllQuestions("", userId);
+    return organizer.listQuestions(userId);
+  }
+
+  @GetMapping("/knowledge-points")
+  public List<Map<String, Object>> knowledgePoints(@RequestHeader("X-User-Id") String userId) {
+    return organizer.listKnowledgePoints(userId);
+  }
+
+  @PostMapping("/knowledge-points")
+  @ResponseStatus(HttpStatus.CREATED)
+  public Map<String, Object> createKnowledgePoint(@RequestBody JsonNode input,
+      @RequestHeader("X-User-Id") String userId) {
+    return organizer.createKnowledgePoint(input, userId);
+  }
+
+  @PutMapping("/questions/{questionId}/knowledge-points")
+  public Map<String, Object> assignKnowledgePoints(@PathVariable String questionId, @RequestBody JsonNode input,
+      @RequestHeader("X-User-Id") String userId) {
+    return organizer.assignKnowledgePoints(questionId, input, userId);
   }
 
   @PatchMapping("/questions/{questionId}")

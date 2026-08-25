@@ -84,6 +84,30 @@ CREATE TABLE IF NOT EXISTS organizer_question_set_item (
   KEY idx_organizer_set_item_sort (set_id, sort_order)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS knowledge_point (
+  id VARCHAR(64) NOT NULL PRIMARY KEY,
+  parent_id VARCHAR(64) NULL,
+  subject VARCHAR(64) NOT NULL,
+  grade VARCHAR(64) NOT NULL DEFAULT '',
+  name VARCHAR(128) NOT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at DATETIME(3) NOT NULL,
+  updated_at DATETIME(3) NOT NULL,
+  UNIQUE KEY uk_knowledge_point_scope_name (subject,grade,parent_id,name),
+  KEY idx_knowledge_point_parent (parent_id,sort_order)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS question_knowledge_point (
+  question_id VARCHAR(64) NOT NULL,
+  knowledge_point_id VARCHAR(64) NOT NULL,
+  confidence INT NOT NULL DEFAULT 0,
+  reason VARCHAR(500) NOT NULL DEFAULT '',
+  source VARCHAR(32) NOT NULL DEFAULT 'manual',
+  created_at DATETIME(3) NOT NULL,
+  PRIMARY KEY (question_id,knowledge_point_id),
+  KEY idx_question_knowledge_point_point (knowledge_point_id,question_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS question_set_purchase (
   id VARCHAR(64) NOT NULL PRIMARY KEY,
   question_set_id VARCHAR(64) NOT NULL,

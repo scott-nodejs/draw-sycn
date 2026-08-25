@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue';
 import { ArrowDown, ArrowLeft, ArrowUp, Check, Search, Trash2 } from 'lucide-vue-next';
+import MathPreview from './MathPreview.vue';
 const props = defineProps();
 const emit = defineEmits();
 const form = ref(JSON.parse(JSON.stringify(props.initial))), query = ref(''), typeFilter = ref('全部题型'), paperFilter = ref('全部试卷');
@@ -89,6 +90,17 @@ let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['set-summary']} */ ;
 /** @type {__VLS_StyleScopedClasses['set-structure']} */ ;
 /** @type {__VLS_StyleScopedClasses['selected-list']} */ ;
+/** @type {__VLS_StyleScopedClasses['assembly-stem']} */ ;
+/** @type {__VLS_StyleScopedClasses['selected-stem']} */ ;
+/** @type {__VLS_StyleScopedClasses['assembly-stem']} */ ;
+/** @type {__VLS_StyleScopedClasses['selected-stem']} */ ;
+/** @type {__VLS_StyleScopedClasses['katex']} */ ;
+/** @type {__VLS_StyleScopedClasses['paper-sources']} */ ;
+/** @type {__VLS_StyleScopedClasses['question-list']} */ ;
+/** @type {__VLS_StyleScopedClasses['selected-list']} */ ;
+/** @type {__VLS_StyleScopedClasses['assembly-stem']} */ ;
+/** @type {__VLS_StyleScopedClasses['assembly-stem']} */ ;
+/** @type {__VLS_StyleScopedClasses['paper-sources']} */ ;
 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
     ...{ class: "assembly-page" },
 });
@@ -283,8 +295,17 @@ for (const [q] of __VLS_vFor((__VLS_ctx.available))) {
     if (q.figureUrls?.length) {
         __VLS_asFunctionalElement1(__VLS_intrinsics.em, __VLS_intrinsics.em)({});
     }
-    __VLS_asFunctionalElement1(__VLS_intrinsics.small, __VLS_intrinsics.small)({});
-    (q.stem);
+    const __VLS_15 = MathPreview;
+    // @ts-ignore
+    const __VLS_16 = __VLS_asFunctionalComponent1(__VLS_15, new __VLS_15({
+        ...{ class: "assembly-stem" },
+        text: (q.stem),
+    }));
+    const __VLS_17 = __VLS_16({
+        ...{ class: "assembly-stem" },
+        text: (q.stem),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_16));
+    /** @type {__VLS_StyleScopedClasses['assembly-stem']} */ ;
     __VLS_asFunctionalElement1(__VLS_intrinsics.small, __VLS_intrinsics.small)({
         ...{ class: "source-line" },
     });
@@ -339,11 +360,20 @@ for (const [q, i] of __VLS_vFor((__VLS_ctx.selected))) {
     (i + 1);
     __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({});
     __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
-    (q.number);
     (q.type);
     __VLS_asFunctionalElement1(__VLS_intrinsics.small, __VLS_intrinsics.small)({});
     (q.sourceTitle || q.paperId);
-    (q.stem);
+    const __VLS_20 = MathPreview;
+    // @ts-ignore
+    const __VLS_21 = __VLS_asFunctionalComponent1(__VLS_20, new __VLS_20({
+        ...{ class: "selected-stem" },
+        text: (q.stem),
+    }));
+    const __VLS_22 = __VLS_21({
+        ...{ class: "selected-stem" },
+        text: (q.stem),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_21));
+    /** @type {__VLS_StyleScopedClasses['selected-stem']} */ ;
     __VLS_asFunctionalElement1(__VLS_intrinsics.nav, __VLS_intrinsics.nav)({});
     __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
         ...{ onClick: (...[$event]) => {
@@ -353,12 +383,12 @@ for (const [q, i] of __VLS_vFor((__VLS_ctx.selected))) {
             } },
         disabled: (i === 0),
     });
-    let __VLS_15;
+    let __VLS_25;
     /** @ts-ignore @type { | typeof __VLS_components.ArrowUp} */
     ArrowUp;
     // @ts-ignore
-    const __VLS_16 = __VLS_asFunctionalComponent1(__VLS_15, new __VLS_15({}));
-    const __VLS_17 = __VLS_16({}, ...__VLS_functionalComponentArgsRest(__VLS_16));
+    const __VLS_26 = __VLS_asFunctionalComponent1(__VLS_25, new __VLS_25({}));
+    const __VLS_27 = __VLS_26({}, ...__VLS_functionalComponentArgsRest(__VLS_26));
     __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
         ...{ onClick: (...[$event]) => {
                 return (__VLS_ctx.move(i, 1));
@@ -367,12 +397,12 @@ for (const [q, i] of __VLS_vFor((__VLS_ctx.selected))) {
             } },
         disabled: (i === __VLS_ctx.selected.length - 1),
     });
-    let __VLS_20;
+    let __VLS_30;
     /** @ts-ignore @type { | typeof __VLS_components.ArrowDown} */
     ArrowDown;
     // @ts-ignore
-    const __VLS_21 = __VLS_asFunctionalComponent1(__VLS_20, new __VLS_20({}));
-    const __VLS_22 = __VLS_21({}, ...__VLS_functionalComponentArgsRest(__VLS_21));
+    const __VLS_31 = __VLS_asFunctionalComponent1(__VLS_30, new __VLS_30({}));
+    const __VLS_32 = __VLS_31({}, ...__VLS_functionalComponentArgsRest(__VLS_31));
     __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
         ...{ onClick: (...[$event]) => {
                 return (__VLS_ctx.toggle(q.id));
@@ -382,12 +412,12 @@ for (const [q, i] of __VLS_vFor((__VLS_ctx.selected))) {
         ...{ class: "remove" },
     });
     /** @type {__VLS_StyleScopedClasses['remove']} */ ;
-    let __VLS_25;
+    let __VLS_35;
     /** @ts-ignore @type { | typeof __VLS_components.Trash2} */
     Trash2;
     // @ts-ignore
-    const __VLS_26 = __VLS_asFunctionalComponent1(__VLS_25, new __VLS_25({}));
-    const __VLS_27 = __VLS_26({}, ...__VLS_functionalComponentArgsRest(__VLS_26));
+    const __VLS_36 = __VLS_asFunctionalComponent1(__VLS_35, new __VLS_35({}));
+    const __VLS_37 = __VLS_36({}, ...__VLS_functionalComponentArgsRest(__VLS_36));
     // @ts-ignore
     [];
 }

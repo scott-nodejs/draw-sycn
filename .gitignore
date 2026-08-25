@@ -12,6 +12,9 @@ server/target/
 .env.*
 !.env.example
 !.env.production.example
+!teacher-agent-web/.env.production
+!teacher-app/.env.production
+!student-app/.env.production
 .npm-cache/
 .idea/
 .m2/

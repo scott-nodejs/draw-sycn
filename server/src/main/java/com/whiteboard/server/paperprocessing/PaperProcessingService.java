@@ -50,6 +50,7 @@ public class PaperProcessingService {
   private final QuestionBoundaryResolver boundaryResolver;
   private final PageImagePreprocessor imagePreprocessor;
   private final RecognitionReportService recognitionReports;
+  private final KnowledgePointClassifierService knowledgePointClassifier;
   private final TransactionTemplate transactions;
 
   public PaperProcessingService(JdbcTemplate jdbc, ObjectMapper json, OcrProviderRouter ocrProviders, DeepseekClient deepseek,
@@ -59,6 +60,7 @@ public class PaperProcessingService {
       QuestionBoundaryResolver boundaryResolver,
       PageImagePreprocessor imagePreprocessor,
       RecognitionReportService recognitionReports,
+      KnowledgePointClassifierService knowledgePointClassifier,
       org.springframework.transaction.PlatformTransactionManager transactionManager) {
     this.jdbc = jdbc; this.json = json; this.ocrProviders = ocrProviders; this.deepseek = deepseek; this.normalizer = normalizer;
     this.layoutClient = layoutClient;
@@ -67,6 +69,7 @@ public class PaperProcessingService {
     this.boundaryResolver = boundaryResolver;
     this.imagePreprocessor = imagePreprocessor;
     this.recognitionReports = recognitionReports;
+    this.knowledgePointClassifier = knowledgePointClassifier;
     this.transactions = new TransactionTemplate(transactionManager);
   }
 
@@ -189,6 +192,12 @@ public class PaperProcessingService {
       JsonNode structured = deepseek.structureQuestions(markdown, normalizedLayout, string(paper.get("subject")), string(paper.get("grade")));
       boundaryResolver.resolve(structured, normalizedLayout);
       qualityValidator.validate(structured);
+      try {
+        int assigned = knowledgePointClassifier.classify(structured.path("questions"), string(paper.get("subject")), string(paper.get("grade")));
+        log.info("DeepSeek knowledge-point classification completed: jobId={}, paperId={}, assignments={}", jobId, paperId, assigned);
+      } catch (Exception classificationError) {
+        log.warn("DeepSeek knowledge-point classification skipped: jobId={}, paperId={}", jobId, paperId, classificationError);
+      }
       String qualityExecution = stageExecutions.start(jobId, paperId, "quality_assurance", "local");
       ObjectNode qualityReport = recognitionReports.create(jobId, paperId, structured);
       stageExecutions.complete(qualityExecution, json.writeValueAsString(qualityReport));
@@ -205,6 +214,7 @@ public class PaperProcessingService {
   protected void persistQuestions(String paperId, JsonNode questions) throws Exception {
     Integer confirmed = jdbc.queryForObject("SELECT COUNT(*) FROM teaching_question WHERE paper_id=? AND review_status='confirmed'", Integer.class, paperId);
     if (confirmed != null && confirmed > 0) throw new ProviderException("PAPER_ALREADY_REVIEWED", "试卷已有确认题目，不能自动覆盖");
+    jdbc.update("DELETE qkp FROM question_knowledge_point qkp JOIN teaching_question q ON q.id=qkp.question_id WHERE q.paper_id=?", paperId);
     jdbc.update("DELETE FROM teaching_question WHERE paper_id=?", paperId); Timestamp current = now();
     for (JsonNode item : questions) {
       int number = item.path("number").asInt(); String questionId = id("question");
@@ -216,6 +226,10 @@ public class PaperProcessingService {
       jdbc.update("INSERT INTO teaching_question (id,paper_id,question_number,question_type,stem,options_json,answer,analysis,points,confidence,difficulty,review_status,teaching_status,crop_regions_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'unrecorded',?,?,?)",
         questionId, paperId, number, normalizeType(item.path("type").asText()), item.path("stem").asText(), json.writeValueAsString(item.path("options")), item.path("answer").asText(), item.path("analysis").asText(), item.path("points").asDouble(0), clamp(item.path("confidence").asInt(0)), normalizeDifficulty(item.path("difficulty").asText()), reviewStatus, json.writeValueAsString(cropData), current, current);
       jdbc.update("INSERT INTO question_revision (id,question_id,version,snapshot_json,change_source,created_at) VALUES (?,?,0,?,'AI_STRUCTURING',?)", id("revision"), questionId, json.writeValueAsString(snapshot), current);
+      if (item.path("knowledgePoints").isArray()) for (JsonNode point : item.path("knowledgePoints")) {
+        jdbc.update("INSERT INTO question_knowledge_point (question_id,knowledge_point_id,confidence,reason,source,created_at) VALUES (?,?,?,?, 'deepseek',?) ON DUPLICATE KEY UPDATE confidence=VALUES(confidence),reason=VALUES(reason),source=VALUES(source)",
+          questionId, point.path("id").asText(), clamp(point.path("confidence").asInt()), point.path("reason").asText(), current);
+      }
     }
   }
 

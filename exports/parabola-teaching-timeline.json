@@ -1,0 +1,110 @@
+{
+  "schema": "math-teaching-canvas.timeline/v1",
+  "sceneId": "parabola-comprehensive-problem-24",
+  "sceneType": "analytic-geometry",
+  "title": "二次函数综合题｜抛物线与直线",
+  "canvasId": "yaeotaw4",
+  "playback": {
+    "mode": "step",
+    "initialDelayMs": 500,
+    "stepDelayMs": 1600,
+    "preservePreviousSteps": true
+  },
+  "givens": [
+    "L1: y=-x^2+bx+c passes through A(0,3) and B(6,3)",
+    "L2: y=a(x-3)^2+d, a<0, passes through C(1/2,2)",
+    "Only the first-quadrant portions are considered"
+  ],
+  "steps": [
+    {
+      "id": "step-0-scene",
+      "index": 0,
+      "title": "建立解析几何场景",
+      "actions": [
+        { "type": "ADD_TEXT", "id": "title", "text": "二次函数综合题｜抛物线与直线" },
+        { "type": "ADD_TEXT", "id": "given", "text": "L₁: y=-x²+bx+c 过 A(0,3)、B(6,3)；L₂: y=a(x-3)²+d (a<0) 过 C(1/2,2)。" },
+        { "type": "ADD_AXES", "id": "coordinate-axes", "xAxisId": "axis-x", "yAxisId": "axis-y" },
+        { "type": "ADD_TEXT", "id": "roadmap", "text": "代入确定 L₁；检验 D；参数化 E、M 并分两种情形。" }
+      ],
+      "focus": ["title", "given", "roadmap"]
+    },
+    {
+      "id": "step-1-determine-l1",
+      "index": 1,
+      "title": "确定 L₁ 与顶点 P",
+      "actions": [
+        { "type": "ADD_LATEX", "id": "eq-c", "latex": "A(0,3)\\Rightarrow c=3" },
+        { "type": "ADD_LATEX", "id": "eq-b", "latex": "B(6,3)\\Rightarrow -36+6b+3=3\\Rightarrow b=6" },
+        { "type": "ADD_FUNCTION", "id": "function-l1", "expression": "y=-x^2+6x+3", "domain": [0, 6.4641016151] },
+        { "type": "ADD_POINT", "id": "point-a", "x": 0, "y": 3, "label": "A(0,3)" },
+        { "type": "ADD_POINT", "id": "point-b", "x": 6, "y": 3, "label": "B(6,3)" },
+        { "type": "ADD_POINT", "id": "point-p", "x": 3, "y": 12, "label": "P(3,12)" },
+        { "type": "ADD_POINT", "id": "point-c", "x": 0.5, "y": 2, "label": "C(1/2,2)" },
+        { "type": "ADD_LATEX", "id": "vertex-form", "latex": "y=-(x-3)^2+12" }
+      ],
+      "focus": ["function-l1", "point-p", "step-1"]
+    },
+    {
+      "id": "step-2-test-d",
+      "index": 2,
+      "title": "判断 L₂ 能否经过 D",
+      "actions": [
+        { "type": "ADD_LATEX", "id": "d-equation", "latex": "-x^2+6x+3=\\frac{23}{4}" },
+        { "type": "ADD_POINT", "id": "point-d1", "x": 0.5, "y": 5.75, "label": "D₁(1/2,23/4)" },
+        { "type": "ADD_POINT", "id": "point-d2", "x": 5.5, "y": 5.75, "label": "D₂(11/2,23/4)" },
+        { "type": "ADD_POINT", "id": "point-c-sym", "x": 5.5, "y": 2, "label": "C′(11/2,2)" },
+        { "type": "HIGHLIGHT", "id": "symmetry-conflict", "targets": ["point-d1", "point-d2", "point-c", "point-c-sym"] },
+        { "type": "ADD_TEXT", "id": "d-conclusion", "text": "L₂ 关于 x=3 对称，候选 D 与 C、C′ 的函数值矛盾，因此 L₂ 不能经过 D。" }
+      ],
+      "focus": ["point-d1", "point-d2", "point-c-sym", "step-2"]
+    },
+    {
+      "id": "step-3-parameterize",
+      "index": 3,
+      "title": "参数化 E、M",
+      "actions": [
+        { "type": "ADD_LATEX", "id": "line-ae", "latex": "AE:y=kx+3" },
+        { "type": "ADD_LATEX", "id": "point-e-formula", "latex": "x_E=6-k" },
+        { "type": "ADD_LATEX", "id": "point-m-formula", "latex": "M\\left(3-\\frac{k}{2},\\frac{k(6-k)+6}{2}\\right)" },
+        { "type": "ADD_ARROW", "id": "arrow-to-cases", "from": "step-3-common", "to": "case-label" }
+      ],
+      "focus": ["step-3-common", "point-m-formula"]
+    },
+    {
+      "id": "step-4-case-1",
+      "index": 4,
+      "title": "情形①：E=P",
+      "actions": [
+        { "type": "ADD_LATEX", "id": "case1-k", "latex": "k=\\frac{12-3}{3}=3" },
+        { "type": "ADD_LATEX", "id": "case1-m", "latex": "M\\left(\\frac32,\\frac{15}{2}\\right)" },
+        { "type": "ADD_LATEX", "id": "case1-system", "latex": "2=\\frac{25}{4}a+d,\\quad \\frac{15}{2}=\\frac94a+d" },
+        { "type": "ADD_TEXT", "id": "answer-case1", "text": "a=-11/8" }
+      ],
+      "focus": ["step-4-case1", "answer-case1"]
+    },
+    {
+      "id": "step-5-case-2",
+      "index": 5,
+      "title": "情形②：M 是唯一公共点",
+      "actions": [
+        { "type": "ADD_TEXT", "id": "tangent-condition", "text": "唯一公共点意味着 AE 与 L₂ 在 M 处相切。" },
+        { "type": "ADD_LATEX", "id": "slope-equation", "latex": "2a(x_M-3)=-ak=k\\Rightarrow a=-1" },
+        { "type": "ADD_LATEX", "id": "d-value", "latex": "C(1/2,2)\\Rightarrow d=33/4" },
+        { "type": "ADD_LATEX", "id": "k-equation", "latex": "k^2-12k+21=0\\Rightarrow k=6\\pm\\sqrt{15}" },
+        { "type": "ADD_TEXT", "id": "branch-filter", "text": "E 位于 L₁ 第一象限部分，x_E=6-k>0，所以 k<6。" },
+        { "type": "ADD_TEXT", "id": "answer-case2", "text": "k=6-√15" }
+      ],
+      "focus": ["step-5-case2", "answer-case2"]
+    },
+    {
+      "id": "step-6-summary",
+      "index": 6,
+      "title": "结论汇总",
+      "actions": [
+        { "type": "ADD_TEXT", "id": "final-summary", "text": "(1) b=6，c=3，P(3,12)；(2) L₂ 不能经过 D；(3) ① a=-11/8；② k=6-√15。" },
+        { "type": "FOCUS", "id": "focus-final", "targets": ["final-summary", "answer-case1", "answer-case2"] }
+      ],
+      "focus": ["final-summary", "answer-case1", "answer-case2"]
+    }
+  ]
+}

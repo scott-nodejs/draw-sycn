@@ -56,6 +56,23 @@ public class DeepseekClient {
     return result;
   }
 
+  public JsonNode classifyKnowledgePoints(JsonNode questions, JsonNode candidates, String subject, String grade) throws Exception {
+    if (apiKey.trim().isEmpty()) throw new ProviderException("DEEPSEEK_NOT_CONFIGURED", "未配置 DEEPSEEK_API_KEY");
+    String system = "你是教学试题知识点分类器。只能从候选知识点中选择，不得创造 ID。每题选择 1 到 3 个最相关的末级知识点；优先选择直接考查的知识点，不要仅凭题目中的表面词汇判断。输出 JSON：" +
+      "{\"matches\":[{\"number\":1,\"knowledgePoints\":[{\"id\":\"\",\"confidence\":90,\"reason\":\"\"}]}]}。" +
+      "confidence 为 0 到 100 的整数，reason 不超过 80 个汉字。无法可靠判断时 knowledgePoints 返回空数组。";
+    String user = "学科：" + subject + "\n年级：" + grade + "\n题目：\n" + json.writeValueAsString(questions) +
+      "\n候选知识点（id/path）：\n" + json.writeValueAsString(candidates);
+    List<Map<String, String>> messages = new ArrayList<>(); messages.add(message("system", system)); messages.add(message("user", user));
+    Map<String, Object> body = new LinkedHashMap<>(); body.put("model", model); body.put("messages", messages); body.put("response_format", java.util.Collections.singletonMap("type", "json_object")); body.put("max_tokens", 4096); body.put("stream", false);
+    HttpHeaders headers = new HttpHeaders(); headers.setBearerAuth(apiKey); headers.setContentType(MediaType.APPLICATION_JSON);
+    String raw = http.postForObject(baseUrl + "/chat/completions", new HttpEntity<Map<String, Object>>(body, headers), String.class);
+    JsonNode response = json.readTree(raw); String content = response.path("choices").path(0).path("message").path("content").asText();
+    JsonNode result = outputRepairer.parse(content);
+    if (!result.path("matches").isArray()) throw new ProviderException("DEEPSEEK_SCHEMA_MISMATCH", "知识点分类结果缺少 matches");
+    return result;
+  }
+
   private void validate(JsonNode result) {
     JsonNode questions = result.path("questions");
     if (!questions.isArray() || questions.size() == 0) throw new ProviderException("DEEPSEEK_SCHEMA_MISMATCH", "DeepSeek 返回结果缺少题目");

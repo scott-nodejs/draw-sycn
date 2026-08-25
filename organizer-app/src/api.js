@@ -27,6 +27,7 @@ export const api = {
     dashboard: () => request('/organizer/dashboard'), papers: () => request('/organizer/papers'),
     upload: (files, data) => { const body = new FormData(); files.forEach(f => body.append('file', f)); Object.entries(data).forEach(([k, v]) => body.append(k, v)); return request('/organizer/papers', { method: 'POST', body }); },
     processing: (id) => request(`/papers/${encodeURIComponent(id)}/processing`), retry: (id) => request(`/papers/${encodeURIComponent(id)}/processing/retry`, { method: 'POST' }), confirmedQuestions: () => request('/organizer/questions'),
+    knowledgePoints: () => request('/organizer/knowledge-points'), createKnowledgePoint: (data) => request('/organizer/knowledge-points', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }), assignKnowledgePoints: (questionId, knowledgePointIds) => request(`/organizer/questions/${encodeURIComponent(questionId)}/knowledge-points`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ knowledgePointIds }) }),
     questions: (id) => request(`/organizer/papers/${encodeURIComponent(id)}/questions`),
     saveQuestion: (q) => request(`/organizer/questions/${encodeURIComponent(q.id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(q) }),
     reprocessQuestion: (id, sourceRegions) => request(`/questions/${encodeURIComponent(id)}/reprocess`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceRegions }) }),

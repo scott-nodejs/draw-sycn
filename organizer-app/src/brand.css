@@ -9,4 +9,4 @@
 .auth-copy>span,.auth-copy h1{color:#102449}
 .auth-copy p{color:#667996}
 .auth-feature{color:#42658f}
-.auth-back{color:#42658f!important}
+.auth-shell{align-items:start!important;padding-top:10vh!important}.auth-copy{grid-column:2;grid-row:1}.auth-card{grid-column:1;grid-row:1;margin-top:64px;position:relative}.auth-back{position:absolute!important;left:auto!important;right:24px!important;top:22px!important;color:#42658f!important;padding:0;border:0;background:transparent;font-size:13px}.auth-card>.eyebrow{padding-right:125px}

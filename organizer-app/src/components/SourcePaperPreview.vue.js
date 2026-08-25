@@ -25,16 +25,26 @@ function regionsForPage(page) { return (props.question.sourceRegions || []).map(
 function scrollToQuestion() { const container = viewport.value, target = container?.querySelector('.paper-question-region'); if (!container || !target)
     return; container.scrollTo({ top: Math.max(0, target.offsetTop + target.parentElement.offsetTop - container.clientHeight * .25), behavior: 'smooth' }); }
 function startAdjust(event, index, mode) { const page = event.currentTarget.closest('.paper-source-page'), region = props.question.sourceRegions?.[index]; if (!page || !region)
-    return; event.preventDefault(); event.stopPropagation(); drag = { index, mode, x: event.clientX, y: event.clientY, region: { ...region }, box: page.getBoundingClientRect() }; window.addEventListener('pointermove', adjust); window.addEventListener('pointerup', stopAdjust, { once: true }); }
+    return; event.preventDefault(); event.stopPropagation(); const box = page.getBoundingClientRect(); drag = { index, mode, x: event.clientX, y: event.clientY, region: { ...region }, box, grabX: (event.clientX - box.left) / box.width * 1000 - region.x0, grabY: (event.clientY - box.top) / box.height * 1000 - region.y0 }; window.addEventListener('pointermove', adjust); window.addEventListener('pointerup', stopAdjust, { once: true }); }
+function pageAtPoint(x, y) { for (const element of document.elementsFromPoint(x, y)) {
+    const page = element.closest?.('.paper-source-page');
+    if (page)
+        return page;
+} return null; }
 function adjust(event) { if (!drag)
-    return; const dx = (event.clientX - drag.x) / drag.box.width * 1000, dy = (event.clientY - drag.y) / drag.box.height * 1000, next = { ...drag.region }; if (drag.mode === 'move') {
-    const width = next.x1 - next.x0, height = next.y1 - next.y0;
-    next.x0 = clamp(drag.region.x0 + dx, 0, 1000 - width);
-    next.y0 = clamp(drag.region.y0 + dy, 0, 1000 - height);
+    return; const next = { ...drag.region }; if (drag.mode === 'move') {
+    const target = pageAtPoint(event.clientX, event.clientY);
+    if (!target)
+        return;
+    const box = target.getBoundingClientRect(), width = next.x1 - next.x0, height = next.y1 - next.y0;
+    next.pageNumber = Number(target.dataset.page) || next.pageNumber;
+    next.x0 = clamp((event.clientX - box.left) / box.width * 1000 - drag.grabX, 0, 1000 - width);
+    next.y0 = clamp((event.clientY - box.top) / box.height * 1000 - drag.grabY, 0, 1000 - height);
     next.x1 = next.x0 + width;
     next.y1 = next.y0 + height;
 }
 else {
+    const dx = (event.clientX - drag.x) / drag.box.width * 1000, dy = (event.clientY - drag.y) / drag.box.height * 1000;
     if (drag.mode.includes('w'))
         next.x0 = clamp(drag.region.x0 + dx, 0, next.x1 - 10);
     if (drag.mode.includes('e'))
@@ -83,16 +93,12 @@ let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['paper-source-state']} */ ;
 /** @type {__VLS_StyleScopedClasses['region-float-actions']} */ ;
 /** @type {__VLS_StyleScopedClasses['region-float-actions']} */ ;
+/** @type {__VLS_StyleScopedClasses['paper-source-preview']} */ ;
 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
     ref: "viewport",
     ...{ class: "paper-source-preview" },
 });
 /** @type {__VLS_StyleScopedClasses['paper-source-preview']} */ ;
-__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-    ...{ class: "paper-source-meta" },
-});
-/** @type {__VLS_StyleScopedClasses['paper-source-meta']} */ ;
-(__VLS_ctx.paper.pageCount || 1);
 if (__VLS_ctx.loading) {
     __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
         ...{ class: "paper-source-state" },
@@ -149,7 +155,7 @@ else {
                             throw 0;
                         return (__VLS_ctx.startAdjust($event, item.index, 'move'));
                         // @ts-ignore
-                        [paper, paper, loading, loadError, loadError, pageUrls, regionsForPage, startAdjust,];
+                        [loading, loadError, loadError, pageUrls, paper, regionsForPage, startAdjust,];
                     } },
                 key: (item.index),
                 ...{ class: "paper-question-region" },

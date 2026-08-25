@@ -48,6 +48,46 @@ public class OrganizerWorkspaceService {
       (rs,n) -> { Map<String,Object> row=new LinkedHashMap<>(); row.put("id",rs.getString("id")); row.put("title",rs.getString("title")); row.put("subject",rs.getString("subject")); row.put("grade",rs.getString("grade")); row.put("pageCount",rs.getInt("page_count")); row.put("questionCount",rs.getInt("question_count")); row.put("reviewedCount",rs.getInt("reviewed_count")); row.put("progress",rs.getInt("progress")); row.put("status",rs.getString("status")); row.put("errorCode",rs.getString("error_code")); row.put("errorMessage",rs.getString("error_message")); row.put("createdAt",rs.getTimestamp("created_at").toLocalDateTime().toString()); return row; }, userId);
   }
 
+  public List<Map<String, Object>> listQuestions(String userId) {
+    List<Map<String, Object>> questions = teaching.listAllQuestions("", userId);
+    for (Map<String, Object> question : questions) {
+      String questionId = String.valueOf(question.get("id"));
+      question.put("knowledgePointIds", jdbc.query(
+        "SELECT knowledge_point_id FROM question_knowledge_point WHERE question_id=? ORDER BY created_at",
+        (rs,n) -> rs.getString(1), questionId));
+    }
+    return questions;
+  }
+
+  public List<Map<String, Object>> listKnowledgePoints(String userId) {
+    return jdbc.query("SELECT k.id,k.parent_id,k.subject,k.grade,k.name,k.sort_order,COUNT(DISTINCT CASE WHEN w.organizer_id=? THEN qkp.question_id END) question_count FROM knowledge_point k LEFT JOIN question_knowledge_point qkp ON qkp.knowledge_point_id=k.id LEFT JOIN teaching_question q ON q.id=qkp.question_id LEFT JOIN organizer_paper_workspace w ON w.paper_id=q.paper_id GROUP BY k.id,k.parent_id,k.subject,k.grade,k.name,k.sort_order ORDER BY k.subject,k.grade,k.sort_order,k.name",
+      (rs,n) -> { Map<String,Object> row=new LinkedHashMap<>(); row.put("id",rs.getString("id")); row.put("parentId",rs.getString("parent_id")); row.put("subject",rs.getString("subject")); row.put("grade",rs.getString("grade")); row.put("name",rs.getString("name")); row.put("sortOrder",rs.getInt("sort_order")); row.put("questionCount",rs.getInt("question_count")); return row; }, userId);
+  }
+
+  @Transactional
+  public Map<String, Object> createKnowledgePoint(JsonNode input, String userId) {
+    String id=id("kp"), name=required(input.path("name").asText(),"知识点名称");
+    String subject=required(input.path("subject").asText(),"学科"), grade=input.path("grade").asText("");
+    String parentId=input.path("parentId").asText("");
+    if (!parentId.isEmpty() && count("SELECT COUNT(*) FROM knowledge_point WHERE id=?",parentId)==0)
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"父级知识点不存在");
+    Timestamp now=now();
+    jdbc.update("INSERT INTO knowledge_point (id,parent_id,subject,grade,name,sort_order,created_at,updated_at) VALUES (?,?,?,?,?,(SELECT next_order FROM (SELECT COALESCE(MAX(sort_order),-1)+1 next_order FROM knowledge_point WHERE subject=? AND grade=?) x),?,?)",id,parentId.isEmpty()?null:parentId,subject,grade,name,subject,grade,now,now);
+    Map<String,Object> result=new LinkedHashMap<>(); result.put("id",id); result.put("parentId",parentId.isEmpty()?null:parentId); result.put("subject",subject); result.put("grade",grade); result.put("name",name); result.put("sortOrder",0); result.put("questionCount",0); return result;
+  }
+
+  @Transactional
+  public Map<String, Object> assignKnowledgePoints(String questionId, JsonNode input, String userId) {
+    assertOrganizerQuestion(questionId,userId);
+    jdbc.update("DELETE FROM question_knowledge_point WHERE question_id=?",questionId);
+    if (input.path("knowledgePointIds").isArray()) for (JsonNode value:input.path("knowledgePointIds")) {
+      String pointId=value.asText();
+      if (count("SELECT COUNT(*) FROM knowledge_point WHERE id=?",pointId)==0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"知识点不存在");
+      jdbc.update("INSERT INTO question_knowledge_point (question_id,knowledge_point_id,created_at) VALUES (?,?,?)",questionId,pointId,now());
+    }
+    Map<String,Object> result=new LinkedHashMap<>(); result.put("questionId",questionId); result.put("knowledgePointIds",jdbc.query("SELECT knowledge_point_id FROM question_knowledge_point WHERE question_id=? ORDER BY created_at",(rs,n)->rs.getString(1),questionId)); return result;
+  }
+
   public void assertOrganizerPaper(String paperId, String userId) {
     if (count("SELECT COUNT(*) FROM organizer_paper_workspace WHERE paper_id=? AND organizer_id=?", paperId, userId) == 0)
       throw new ResponseStatusException(HttpStatus.FORBIDDEN, "无权访问该整理任务");

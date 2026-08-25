@@ -3,6 +3,11 @@ const path = require('node:path')
 
 const isDev = process.env.ELECTRON_DEV === 'true'
 const devUrl = process.env.ELECTRON_DEV_URL || 'http://127.0.0.1:5173'
+const windowIcon = isDev
+  ? path.join(__dirname, '..', 'public', 'brand', 'bijian-logo.png')
+  : path.join(__dirname, '..', 'dist', 'brand', 'bijian-logo.png')
+
+app.setName('笔尖云堂 · 老师端')
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
@@ -10,7 +15,8 @@ function createWindow() {
     height: 960,
     minWidth: 1180,
     minHeight: 720,
-    title: '笔尖云堂老师端',
+    title: '笔尖云堂 · 老师端',
+    icon: windowIcon,
     backgroundColor: '#f4f2ee',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
