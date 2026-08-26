@@ -1,5 +1,5 @@
 import { computed, onMounted, ref, watch } from 'vue';
-import { AlertTriangle, Archive, BookOpenCheck, CheckCircle2, ChevronRight, FileStack, LayoutDashboard, LogOut, Plus, RefreshCw, Search, Settings2, ShoppingBag, Tags, UploadCloud, WandSparkles } from 'lucide-vue-next';
+import { AlertTriangle, Archive, BookOpenCheck, CheckCircle2, ChevronLeft, ChevronRight, FileStack, LayoutDashboard, LogOut, Plus, RefreshCw, Search, Settings2, ShoppingBag, Tags, UploadCloud, WandSparkles } from 'lucide-vue-next';
 import { api, session } from './api';
 import SourcePaperPreview from './components/SourcePaperPreview.vue';
 import MathPreview from './components/MathPreview.vue';
@@ -16,7 +16,14 @@ const uploadOpen = ref(false), files = ref([]), upload = ref({ title: '', subjec
 const setOpen = ref(false), setForm = ref({ title: '', description: '', subject: '数学', grade: '初三', collectionType: 'topic', topicLabel: '', price: 19.9, questionIds: [] });
 const setTab = ref('mine'), editingSetId = ref(null);
 const knowledgePoints = ref([]), selectedKnowledgePoint = ref(''), questionSearch = ref(''), questionType = ref(''), questionDifficulty = ref(''), editingKnowledgeQuestion = ref(null), newKnowledgeName = ref('');
+const pageSize = 10, paperPage = ref(1), taskPage = ref(1), questionPage = ref(1), paperSearch = ref('');
+const filteredPapers = computed(() => papers.value.filter(p => !paperSearch.value || `${p.title} ${p.grade} ${p.subject}`.toLowerCase().includes(paperSearch.value.toLowerCase())));
 const filteredQuestions = computed(() => confirmedQuestions.value.filter(q => (!selectedKnowledgePoint.value || q.knowledgePointIds?.includes(selectedKnowledgePoint.value)) && (!questionSearch.value || `${q.stem} ${q.sourceTitle || ''}`.toLowerCase().includes(questionSearch.value.toLowerCase())) && (!questionType.value || q.type === questionType.value) && (!questionDifficulty.value || q.difficulty === questionDifficulty.value)));
+const pageCount = (total) => Math.max(1, Math.ceil(total / pageSize));
+const pageItems = (items, currentPage) => items.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+const paperPageCount = computed(() => pageCount(filteredPapers.value.length)), taskPageCount = computed(() => pageCount(papers.value.length)), questionPageCount = computed(() => pageCount(filteredQuestions.value.length));
+const pagedPapers = computed(() => pageItems(filteredPapers.value, paperPage.value)), pagedTasks = computed(() => pageItems(papers.value, taskPage.value)), pagedQuestions = computed(() => pageItems(filteredQuestions.value, questionPage.value));
+const visiblePages = (currentPage, totalPages) => Array.from({ length: Math.min(5, totalPages) }, (_, index) => Math.min(Math.max(1, currentPage - 2), Math.max(1, totalPages - 4)) + index);
 const rootKnowledgePoints = computed(() => knowledgePoints.value.filter(item => !item.parentId));
 const knowledgeChildren = (parentId) => knowledgePoints.value.filter(item => item.parentId === parentId);
 const knowledgeName = (id) => knowledgePoints.value.find(item => item.id === id)?.name || '';
@@ -122,6 +129,11 @@ onMounted(() => { if (current.value)
     load().catch(e => error.value = e.message); });
 watch(page, (next, previous) => { if (next !== previous && next !== 'review')
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' }); });
+watch(paperSearch, () => paperPage.value = 1);
+watch([selectedKnowledgePoint, questionSearch, questionType, questionDifficulty], () => questionPage.value = 1);
+watch(paperPageCount, total => paperPage.value = Math.min(paperPage.value, total));
+watch(taskPageCount, total => taskPage.value = Math.min(taskPage.value, total));
+watch(questionPageCount, total => questionPage.value = Math.min(questionPage.value, total));
 const __VLS_ctx = {
     ...{},
     ...{},
@@ -865,7 +877,7 @@ else {
             ...{ class: "html-task-list" },
         });
         /** @type {__VLS_StyleScopedClasses['html-task-list']} */ ;
-        for (const [p] of __VLS_vFor((__VLS_ctx.papers))) {
+        for (const [p] of __VLS_vFor((__VLS_ctx.pagedTasks))) {
             __VLS_asFunctionalElement1(__VLS_intrinsics.article, __VLS_intrinsics.article)({
                 key: (p.id),
                 ...{ class: "html-task" },
@@ -928,7 +940,7 @@ else {
                                 throw 0;
                             return (__VLS_ctx.retryTask(p));
                             // @ts-ignore
-                            [page, stats, papers, retryTask,];
+                            [page, stats, pagedTasks, retryTask,];
                         } },
                     ...{ class: "primary" },
                     disabled: (__VLS_ctx.busy),
@@ -999,6 +1011,90 @@ else {
             const __VLS_106 = __VLS_asFunctionalComponent1(__VLS_105, new __VLS_105({}));
             const __VLS_107 = __VLS_106({}, ...__VLS_functionalComponentArgsRest(__VLS_106));
         }
+        if (__VLS_ctx.papers.length > __VLS_ctx.pageSize) {
+            __VLS_asFunctionalElement1(__VLS_intrinsics.nav, __VLS_intrinsics.nav)({
+                ...{ class: "pagination" },
+                'aria-label': "任务列表分页",
+            });
+            /** @type {__VLS_StyleScopedClasses['pagination']} */ ;
+            __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
+                            throw 0;
+                        if (!!(!__VLS_ctx.current))
+                            throw 0;
+                        if (!!(__VLS_ctx.page === 'dashboard'))
+                            throw 0;
+                        if (!(__VLS_ctx.page === 'tasks'))
+                            throw 0;
+                        if (!(__VLS_ctx.papers.length > __VLS_ctx.pageSize))
+                            throw 0;
+                        return (__VLS_ctx.taskPage--);
+                        // @ts-ignore
+                        [papers, pageSize, taskPage,];
+                    } },
+                disabled: (__VLS_ctx.taskPage === 1),
+                title: "上一页",
+            });
+            let __VLS_110;
+            /** @ts-ignore @type { | typeof __VLS_components.ChevronLeft} */
+            ChevronLeft;
+            // @ts-ignore
+            const __VLS_111 = __VLS_asFunctionalComponent1(__VLS_110, new __VLS_110({}));
+            const __VLS_112 = __VLS_111({}, ...__VLS_functionalComponentArgsRest(__VLS_111));
+            for (const [value] of __VLS_vFor((__VLS_ctx.visiblePages(__VLS_ctx.taskPage, __VLS_ctx.taskPageCount)))) {
+                __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+                    ...{ onClick: (...[$event]) => {
+                            if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
+                                throw 0;
+                            if (!!(!__VLS_ctx.current))
+                                throw 0;
+                            if (!!(__VLS_ctx.page === 'dashboard'))
+                                throw 0;
+                            if (!(__VLS_ctx.page === 'tasks'))
+                                throw 0;
+                            if (!(__VLS_ctx.papers.length > __VLS_ctx.pageSize))
+                                throw 0;
+                            return (__VLS_ctx.taskPage = value);
+                            // @ts-ignore
+                            [taskPage, taskPage, taskPage, visiblePages, taskPageCount,];
+                        } },
+                    key: (value),
+                    ...{ class: ({ active: __VLS_ctx.taskPage === value }) },
+                });
+                /** @type {__VLS_StyleScopedClasses['active']} */ ;
+                (value);
+                // @ts-ignore
+                [taskPage,];
+            }
+            __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
+                            throw 0;
+                        if (!!(!__VLS_ctx.current))
+                            throw 0;
+                        if (!!(__VLS_ctx.page === 'dashboard'))
+                            throw 0;
+                        if (!(__VLS_ctx.page === 'tasks'))
+                            throw 0;
+                        if (!(__VLS_ctx.papers.length > __VLS_ctx.pageSize))
+                            throw 0;
+                        return (__VLS_ctx.taskPage++);
+                        // @ts-ignore
+                        [taskPage,];
+                    } },
+                disabled: (__VLS_ctx.taskPage === __VLS_ctx.taskPageCount),
+                title: "下一页",
+            });
+            let __VLS_115;
+            /** @ts-ignore @type { | typeof __VLS_components.ChevronRight} */
+            ChevronRight;
+            // @ts-ignore
+            const __VLS_116 = __VLS_asFunctionalComponent1(__VLS_115, new __VLS_115({}));
+            const __VLS_117 = __VLS_116({}, ...__VLS_functionalComponentArgsRest(__VLS_116));
+            __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
+            (__VLS_ctx.papers.length);
+        }
     }
     else if (__VLS_ctx.page === 'papers') {
         __VLS_asFunctionalElement1(__VLS_intrinsics.section, __VLS_intrinsics.section)({
@@ -1013,15 +1109,16 @@ else {
             ...{ class: "search" },
         });
         /** @type {__VLS_StyleScopedClasses['search']} */ ;
-        let __VLS_110;
+        let __VLS_120;
         /** @ts-ignore @type { | typeof __VLS_components.Search} */
         Search;
         // @ts-ignore
-        const __VLS_111 = __VLS_asFunctionalComponent1(__VLS_110, new __VLS_110({}));
-        const __VLS_112 = __VLS_111({}, ...__VLS_functionalComponentArgsRest(__VLS_111));
+        const __VLS_121 = __VLS_asFunctionalComponent1(__VLS_120, new __VLS_120({}));
+        const __VLS_122 = __VLS_121({}, ...__VLS_functionalComponentArgsRest(__VLS_121));
         __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
             placeholder: "搜索试卷名称、年级或学科",
         });
+        (__VLS_ctx.paperSearch);
         __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
             ...{ class: "filter active" },
         });
@@ -1037,7 +1134,7 @@ else {
             ...{ class: "paper-grid" },
         });
         /** @type {__VLS_StyleScopedClasses['paper-grid']} */ ;
-        for (const [p] of __VLS_vFor((__VLS_ctx.papers))) {
+        for (const [p] of __VLS_vFor((__VLS_ctx.pagedPapers))) {
             __VLS_asFunctionalElement1(__VLS_intrinsics.article, __VLS_intrinsics.article)({
                 ...{ onClick: (...[$event]) => {
                         if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
@@ -1052,7 +1149,7 @@ else {
                             throw 0;
                         return (__VLS_ctx.openPaper(p));
                         // @ts-ignore
-                        [page, stats, papers, papers, openPaper,];
+                        [page, stats, openPaper, papers, papers, taskPage, taskPageCount, paperSearch, pagedPapers,];
                     } },
                 key: (p.id),
                 ...{ class: "paper-card" },
@@ -1105,12 +1202,12 @@ else {
             });
             __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({});
             (p.status === 'processing' ? '查看解析进度' : '进入校对');
-            let __VLS_115;
+            let __VLS_125;
             /** @ts-ignore @type { | typeof __VLS_components.ChevronRight} */
             ChevronRight;
             // @ts-ignore
-            const __VLS_116 = __VLS_asFunctionalComponent1(__VLS_115, new __VLS_115({}));
-            const __VLS_117 = __VLS_116({}, ...__VLS_functionalComponentArgsRest(__VLS_116));
+            const __VLS_126 = __VLS_asFunctionalComponent1(__VLS_125, new __VLS_125({}));
+            const __VLS_127 = __VLS_126({}, ...__VLS_functionalComponentArgsRest(__VLS_126));
             // @ts-ignore
             [];
         }
@@ -1133,14 +1230,104 @@ else {
             ...{ class: "new-paper" },
         });
         /** @type {__VLS_StyleScopedClasses['new-paper']} */ ;
-        let __VLS_120;
+        let __VLS_130;
         /** @ts-ignore @type { | typeof __VLS_components.Plus} */
         Plus;
         // @ts-ignore
-        const __VLS_121 = __VLS_asFunctionalComponent1(__VLS_120, new __VLS_120({}));
-        const __VLS_122 = __VLS_121({}, ...__VLS_functionalComponentArgsRest(__VLS_121));
+        const __VLS_131 = __VLS_asFunctionalComponent1(__VLS_130, new __VLS_130({}));
+        const __VLS_132 = __VLS_131({}, ...__VLS_functionalComponentArgsRest(__VLS_131));
         __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
         __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
+        if (__VLS_ctx.filteredPapers.length > __VLS_ctx.pageSize) {
+            __VLS_asFunctionalElement1(__VLS_intrinsics.nav, __VLS_intrinsics.nav)({
+                ...{ class: "pagination" },
+                'aria-label': "试卷列表分页",
+            });
+            /** @type {__VLS_StyleScopedClasses['pagination']} */ ;
+            __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
+                            throw 0;
+                        if (!!(!__VLS_ctx.current))
+                            throw 0;
+                        if (!!(__VLS_ctx.page === 'dashboard'))
+                            throw 0;
+                        if (!!(__VLS_ctx.page === 'tasks'))
+                            throw 0;
+                        if (!(__VLS_ctx.page === 'papers'))
+                            throw 0;
+                        if (!(__VLS_ctx.filteredPapers.length > __VLS_ctx.pageSize))
+                            throw 0;
+                        return (__VLS_ctx.paperPage--);
+                        // @ts-ignore
+                        [pageSize, filteredPapers, paperPage,];
+                    } },
+                disabled: (__VLS_ctx.paperPage === 1),
+                title: "上一页",
+            });
+            let __VLS_135;
+            /** @ts-ignore @type { | typeof __VLS_components.ChevronLeft} */
+            ChevronLeft;
+            // @ts-ignore
+            const __VLS_136 = __VLS_asFunctionalComponent1(__VLS_135, new __VLS_135({}));
+            const __VLS_137 = __VLS_136({}, ...__VLS_functionalComponentArgsRest(__VLS_136));
+            for (const [value] of __VLS_vFor((__VLS_ctx.visiblePages(__VLS_ctx.paperPage, __VLS_ctx.paperPageCount)))) {
+                __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+                    ...{ onClick: (...[$event]) => {
+                            if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
+                                throw 0;
+                            if (!!(!__VLS_ctx.current))
+                                throw 0;
+                            if (!!(__VLS_ctx.page === 'dashboard'))
+                                throw 0;
+                            if (!!(__VLS_ctx.page === 'tasks'))
+                                throw 0;
+                            if (!(__VLS_ctx.page === 'papers'))
+                                throw 0;
+                            if (!(__VLS_ctx.filteredPapers.length > __VLS_ctx.pageSize))
+                                throw 0;
+                            return (__VLS_ctx.paperPage = value);
+                            // @ts-ignore
+                            [visiblePages, paperPage, paperPage, paperPage, paperPageCount,];
+                        } },
+                    key: (value),
+                    ...{ class: ({ active: __VLS_ctx.paperPage === value }) },
+                });
+                /** @type {__VLS_StyleScopedClasses['active']} */ ;
+                (value);
+                // @ts-ignore
+                [paperPage,];
+            }
+            __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
+                            throw 0;
+                        if (!!(!__VLS_ctx.current))
+                            throw 0;
+                        if (!!(__VLS_ctx.page === 'dashboard'))
+                            throw 0;
+                        if (!!(__VLS_ctx.page === 'tasks'))
+                            throw 0;
+                        if (!(__VLS_ctx.page === 'papers'))
+                            throw 0;
+                        if (!(__VLS_ctx.filteredPapers.length > __VLS_ctx.pageSize))
+                            throw 0;
+                        return (__VLS_ctx.paperPage++);
+                        // @ts-ignore
+                        [paperPage,];
+                    } },
+                disabled: (__VLS_ctx.paperPage === __VLS_ctx.paperPageCount),
+                title: "下一页",
+            });
+            let __VLS_140;
+            /** @ts-ignore @type { | typeof __VLS_components.ChevronRight} */
+            ChevronRight;
+            // @ts-ignore
+            const __VLS_141 = __VLS_asFunctionalComponent1(__VLS_140, new __VLS_140({}));
+            const __VLS_142 = __VLS_141({}, ...__VLS_functionalComponentArgsRest(__VLS_141));
+            __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
+            (__VLS_ctx.filteredPapers.length);
+        }
     }
     else if (__VLS_ctx.page === 'review') {
         __VLS_asFunctionalElement1(__VLS_intrinsics.section, __VLS_intrinsics.section)({
@@ -1167,7 +1354,7 @@ else {
                         throw 0;
                     return (__VLS_ctx.page = 'papers');
                     // @ts-ignore
-                    [page, page,];
+                    [page, page, filteredPapers, paperPage, paperPageCount,];
                 } },
             ...{ class: "back" },
         });
@@ -1188,24 +1375,24 @@ else {
             disabled: (__VLS_ctx.busy),
         });
         /** @type {__VLS_StyleScopedClasses['ghost']} */ ;
-        let __VLS_125;
+        let __VLS_145;
         /** @ts-ignore @type { | typeof __VLS_components.RefreshCw} */
         RefreshCw;
         // @ts-ignore
-        const __VLS_126 = __VLS_asFunctionalComponent1(__VLS_125, new __VLS_125({}));
-        const __VLS_127 = __VLS_126({}, ...__VLS_functionalComponentArgsRest(__VLS_126));
+        const __VLS_146 = __VLS_asFunctionalComponent1(__VLS_145, new __VLS_145({}));
+        const __VLS_147 = __VLS_146({}, ...__VLS_functionalComponentArgsRest(__VLS_146));
         __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
             ...{ onClick: (__VLS_ctx.reparsePaper) },
             ...{ class: "reparse-button" },
             disabled: (__VLS_ctx.busy || __VLS_ctx.selectedPaper?.status === 'processing'),
         });
         /** @type {__VLS_StyleScopedClasses['reparse-button']} */ ;
-        let __VLS_130;
+        let __VLS_150;
         /** @ts-ignore @type { | typeof __VLS_components.WandSparkles} */
         WandSparkles;
         // @ts-ignore
-        const __VLS_131 = __VLS_asFunctionalComponent1(__VLS_130, new __VLS_130({}));
-        const __VLS_132 = __VLS_131({}, ...__VLS_functionalComponentArgsRest(__VLS_131));
+        const __VLS_151 = __VLS_asFunctionalComponent1(__VLS_150, new __VLS_150({}));
+        const __VLS_152 = __VLS_151({}, ...__VLS_functionalComponentArgsRest(__VLS_151));
         (__VLS_ctx.busy ? '提交中' : '重新解析');
         if (__VLS_ctx.selectedPaper?.status === 'processing') {
             __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
@@ -1216,12 +1403,12 @@ else {
                 ...{ class: "ai-orb" },
             });
             /** @type {__VLS_StyleScopedClasses['ai-orb']} */ ;
-            let __VLS_135;
+            let __VLS_155;
             /** @ts-ignore @type { | typeof __VLS_components.WandSparkles} */
             WandSparkles;
             // @ts-ignore
-            const __VLS_136 = __VLS_asFunctionalComponent1(__VLS_135, new __VLS_135({}));
-            const __VLS_137 = __VLS_136({}, ...__VLS_functionalComponentArgsRest(__VLS_136));
+            const __VLS_156 = __VLS_asFunctionalComponent1(__VLS_155, new __VLS_155({}));
+            const __VLS_157 = __VLS_156({}, ...__VLS_functionalComponentArgsRest(__VLS_156));
             __VLS_asFunctionalElement1(__VLS_intrinsics.h2, __VLS_intrinsics.h2)({});
             __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({});
             (__VLS_ctx.selectedPaper.progress);
@@ -1285,24 +1472,24 @@ else {
                 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({});
                 __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
                 (q.type);
-                const __VLS_140 = MathPreview;
+                const __VLS_160 = MathPreview;
                 // @ts-ignore
-                const __VLS_141 = __VLS_asFunctionalComponent1(__VLS_140, new __VLS_140({
+                const __VLS_161 = __VLS_asFunctionalComponent1(__VLS_160, new __VLS_160({
                     ...{ class: "question-nav-preview" },
                     text: (q.stem),
                 }));
-                const __VLS_142 = __VLS_141({
+                const __VLS_162 = __VLS_161({
                     ...{ class: "question-nav-preview" },
                     text: (q.stem),
-                }, ...__VLS_functionalComponentArgsRest(__VLS_141));
+                }, ...__VLS_functionalComponentArgsRest(__VLS_161));
                 /** @type {__VLS_StyleScopedClasses['question-nav-preview']} */ ;
                 if (q.status === 'confirmed') {
-                    let __VLS_145;
+                    let __VLS_165;
                     /** @ts-ignore @type { | typeof __VLS_components.CheckCircle2} */
                     CheckCircle2;
                     // @ts-ignore
-                    const __VLS_146 = __VLS_asFunctionalComponent1(__VLS_145, new __VLS_145({}));
-                    const __VLS_147 = __VLS_146({}, ...__VLS_functionalComponentArgsRest(__VLS_146));
+                    const __VLS_166 = __VLS_asFunctionalComponent1(__VLS_165, new __VLS_165({}));
+                    const __VLS_167 = __VLS_166({}, ...__VLS_functionalComponentArgsRest(__VLS_166));
                 }
                 // @ts-ignore
                 [selectedQuestion,];
@@ -1315,12 +1502,12 @@ else {
                 ...{ class: "crop-placeholder" },
             });
             /** @type {__VLS_StyleScopedClasses['crop-placeholder']} */ ;
-            let __VLS_150;
+            let __VLS_170;
             /** @ts-ignore @type { | typeof __VLS_components.Archive} */
             Archive;
             // @ts-ignore
-            const __VLS_151 = __VLS_asFunctionalComponent1(__VLS_150, new __VLS_150({}));
-            const __VLS_152 = __VLS_151({}, ...__VLS_functionalComponentArgsRest(__VLS_151));
+            const __VLS_171 = __VLS_asFunctionalComponent1(__VLS_170, new __VLS_170({}));
+            const __VLS_172 = __VLS_171({}, ...__VLS_functionalComponentArgsRest(__VLS_171));
             __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({});
             __VLS_asFunctionalElement1(__VLS_intrinsics.small, __VLS_intrinsics.small)({});
             if (__VLS_ctx.selectedQuestion) {
@@ -1332,12 +1519,12 @@ else {
                     ...{ class: "confidence" },
                 });
                 /** @type {__VLS_StyleScopedClasses['confidence']} */ ;
-                let __VLS_155;
+                let __VLS_175;
                 /** @ts-ignore @type { | typeof __VLS_components.WandSparkles} */
                 WandSparkles;
                 // @ts-ignore
-                const __VLS_156 = __VLS_asFunctionalComponent1(__VLS_155, new __VLS_155({}));
-                const __VLS_157 = __VLS_156({}, ...__VLS_functionalComponentArgsRest(__VLS_156));
+                const __VLS_176 = __VLS_asFunctionalComponent1(__VLS_175, new __VLS_175({}));
+                const __VLS_177 = __VLS_176({}, ...__VLS_functionalComponentArgsRest(__VLS_176));
                 __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
                 (__VLS_ctx.selectedQuestion.confidence);
                 __VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
@@ -1357,14 +1544,14 @@ else {
                 });
                 /** @type {__VLS_StyleScopedClasses['formatted-question']} */ ;
                 __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
-                const __VLS_160 = MathPreview;
+                const __VLS_180 = MathPreview;
                 // @ts-ignore
-                const __VLS_161 = __VLS_asFunctionalComponent1(__VLS_160, new __VLS_160({
+                const __VLS_181 = __VLS_asFunctionalComponent1(__VLS_180, new __VLS_180({
                     text: (__VLS_ctx.selectedQuestion.stem),
                 }));
-                const __VLS_162 = __VLS_161({
+                const __VLS_182 = __VLS_181({
                     text: (__VLS_ctx.selectedQuestion.stem),
-                }, ...__VLS_functionalComponentArgsRest(__VLS_161));
+                }, ...__VLS_functionalComponentArgsRest(__VLS_181));
                 __VLS_asFunctionalElement1(__VLS_intrinsics.details, __VLS_intrinsics.details)({
                     ...{ class: "source-editor" },
                 });
@@ -1387,14 +1574,14 @@ else {
                         });
                         __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
                         (String.fromCharCode(65 + index));
-                        const __VLS_165 = MathPreview;
+                        const __VLS_185 = MathPreview;
                         // @ts-ignore
-                        const __VLS_166 = __VLS_asFunctionalComponent1(__VLS_165, new __VLS_165({
+                        const __VLS_186 = __VLS_asFunctionalComponent1(__VLS_185, new __VLS_185({
                             text: (option),
                         }));
-                        const __VLS_167 = __VLS_166({
+                        const __VLS_187 = __VLS_186({
                             text: (option),
-                        }, ...__VLS_functionalComponentArgsRest(__VLS_166));
+                        }, ...__VLS_functionalComponentArgsRest(__VLS_186));
                         // @ts-ignore
                         [selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion,];
                     }
@@ -1426,14 +1613,14 @@ else {
                 /** @type {__VLS_StyleScopedClasses['formatted-question']} */ ;
                 /** @type {__VLS_StyleScopedClasses['compact']} */ ;
                 __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
-                const __VLS_170 = MathPreview;
+                const __VLS_190 = MathPreview;
                 // @ts-ignore
-                const __VLS_171 = __VLS_asFunctionalComponent1(__VLS_170, new __VLS_170({
+                const __VLS_191 = __VLS_asFunctionalComponent1(__VLS_190, new __VLS_190({
                     text: (__VLS_ctx.selectedQuestion.answer),
                 }));
-                const __VLS_172 = __VLS_171({
+                const __VLS_192 = __VLS_191({
                     text: (__VLS_ctx.selectedQuestion.answer),
-                }, ...__VLS_functionalComponentArgsRest(__VLS_171));
+                }, ...__VLS_functionalComponentArgsRest(__VLS_191));
                 __VLS_asFunctionalElement1(__VLS_intrinsics.details, __VLS_intrinsics.details)({
                     ...{ class: "source-editor" },
                 });
@@ -1450,14 +1637,14 @@ else {
                     /** @type {__VLS_StyleScopedClasses['formatted-question']} */ ;
                     /** @type {__VLS_StyleScopedClasses['compact']} */ ;
                     __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
-                    const __VLS_175 = MathPreview;
+                    const __VLS_195 = MathPreview;
                     // @ts-ignore
-                    const __VLS_176 = __VLS_asFunctionalComponent1(__VLS_175, new __VLS_175({
+                    const __VLS_196 = __VLS_asFunctionalComponent1(__VLS_195, new __VLS_195({
                         text: (__VLS_ctx.selectedQuestion.analysis),
                     }));
-                    const __VLS_177 = __VLS_176({
+                    const __VLS_197 = __VLS_196({
                         text: (__VLS_ctx.selectedQuestion.analysis),
-                    }, ...__VLS_functionalComponentArgsRest(__VLS_176));
+                    }, ...__VLS_functionalComponentArgsRest(__VLS_196));
                 }
                 __VLS_asFunctionalElement1(__VLS_intrinsics.details, __VLS_intrinsics.details)({
                     ...{ class: "source-editor" },
@@ -1481,12 +1668,12 @@ else {
                 });
                 /** @type {__VLS_StyleScopedClasses['primary']} */ ;
                 /** @type {__VLS_StyleScopedClasses['wide']} */ ;
-                let __VLS_180;
+                let __VLS_200;
                 /** @ts-ignore @type { | typeof __VLS_components.CheckCircle2} */
                 CheckCircle2;
                 // @ts-ignore
-                const __VLS_181 = __VLS_asFunctionalComponent1(__VLS_180, new __VLS_180({}));
-                const __VLS_182 = __VLS_181({}, ...__VLS_functionalComponentArgsRest(__VLS_181));
+                const __VLS_201 = __VLS_asFunctionalComponent1(__VLS_200, new __VLS_200({}));
+                const __VLS_202 = __VLS_201({}, ...__VLS_functionalComponentArgsRest(__VLS_201));
             }
         }
     }
@@ -1504,12 +1691,12 @@ else {
         });
         /** @type {__VLS_StyleScopedClasses['knowledge-title']} */ ;
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({});
-        let __VLS_185;
+        let __VLS_205;
         /** @ts-ignore @type { | typeof __VLS_components.Tags} */
         Tags;
         // @ts-ignore
-        const __VLS_186 = __VLS_asFunctionalComponent1(__VLS_185, new __VLS_185({}));
-        const __VLS_187 = __VLS_186({}, ...__VLS_functionalComponentArgsRest(__VLS_186));
+        const __VLS_206 = __VLS_asFunctionalComponent1(__VLS_205, new __VLS_205({}));
+        const __VLS_207 = __VLS_206({}, ...__VLS_functionalComponentArgsRest(__VLS_206));
         __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
         __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
         (__VLS_ctx.knowledgePoints.length);
@@ -1614,12 +1801,12 @@ else {
                 ...{ class: "knowledge-empty" },
             });
             /** @type {__VLS_StyleScopedClasses['knowledge-empty']} */ ;
-            let __VLS_190;
+            let __VLS_210;
             /** @ts-ignore @type { | typeof __VLS_components.Tags} */
             Tags;
             // @ts-ignore
-            const __VLS_191 = __VLS_asFunctionalComponent1(__VLS_190, new __VLS_190({}));
-            const __VLS_192 = __VLS_191({}, ...__VLS_functionalComponentArgsRest(__VLS_191));
+            const __VLS_211 = __VLS_asFunctionalComponent1(__VLS_210, new __VLS_210({}));
+            const __VLS_212 = __VLS_211({}, ...__VLS_functionalComponentArgsRest(__VLS_211));
             __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
             __VLS_asFunctionalElement1(__VLS_intrinsics.small, __VLS_intrinsics.small)({});
         }
@@ -1647,12 +1834,12 @@ else {
             ...{ class: "search" },
         });
         /** @type {__VLS_StyleScopedClasses['search']} */ ;
-        let __VLS_195;
+        let __VLS_215;
         /** @ts-ignore @type { | typeof __VLS_components.Search} */
         Search;
         // @ts-ignore
-        const __VLS_196 = __VLS_asFunctionalComponent1(__VLS_195, new __VLS_195({}));
-        const __VLS_197 = __VLS_196({}, ...__VLS_functionalComponentArgsRest(__VLS_196));
+        const __VLS_216 = __VLS_asFunctionalComponent1(__VLS_215, new __VLS_215({}));
+        const __VLS_217 = __VLS_216({}, ...__VLS_functionalComponentArgsRest(__VLS_216));
         __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
             placeholder: "搜索题干或来源试卷",
         });
@@ -1677,7 +1864,7 @@ else {
         __VLS_asFunctionalElement1(__VLS_intrinsics.option, __VLS_intrinsics.option)({});
         __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
         (__VLS_ctx.filteredQuestions.length);
-        for (const [q] of __VLS_vFor((__VLS_ctx.filteredQuestions))) {
+        for (const [q] of __VLS_vFor((__VLS_ctx.pagedQuestions))) {
             __VLS_asFunctionalElement1(__VLS_intrinsics.article, __VLS_intrinsics.article)({
                 key: (q.id),
                 ...{ class: "question-list-card" },
@@ -1720,27 +1907,27 @@ else {
                             throw 0;
                         return (__VLS_ctx.editingKnowledgeQuestion = __VLS_ctx.editingKnowledgeQuestion === q.id ? null : q.id);
                         // @ts-ignore
-                        [busy, knowledgePoints, selectedKnowledgePoint, createKnowledgePoint, newKnowledgeName, newKnowledgeName, questionSearch, questionType, questionDifficulty, filteredQuestions, filteredQuestions, editingKnowledgeQuestion, editingKnowledgeQuestion,];
+                        [busy, knowledgePoints, selectedKnowledgePoint, createKnowledgePoint, newKnowledgeName, newKnowledgeName, questionSearch, questionType, questionDifficulty, filteredQuestions, pagedQuestions, editingKnowledgeQuestion, editingKnowledgeQuestion,];
                     } },
             });
-            let __VLS_200;
+            let __VLS_220;
             /** @ts-ignore @type { | typeof __VLS_components.Tags} */
             Tags;
             // @ts-ignore
-            const __VLS_201 = __VLS_asFunctionalComponent1(__VLS_200, new __VLS_200({}));
-            const __VLS_202 = __VLS_201({}, ...__VLS_functionalComponentArgsRest(__VLS_201));
+            const __VLS_221 = __VLS_asFunctionalComponent1(__VLS_220, new __VLS_220({}));
+            const __VLS_222 = __VLS_221({}, ...__VLS_functionalComponentArgsRest(__VLS_221));
             __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
                 ...{ class: "question-stem" },
             });
             /** @type {__VLS_StyleScopedClasses['question-stem']} */ ;
-            const __VLS_205 = MathPreview;
+            const __VLS_225 = MathPreview;
             // @ts-ignore
-            const __VLS_206 = __VLS_asFunctionalComponent1(__VLS_205, new __VLS_205({
+            const __VLS_226 = __VLS_asFunctionalComponent1(__VLS_225, new __VLS_225({
                 text: (q.stem),
             }));
-            const __VLS_207 = __VLS_206({
+            const __VLS_227 = __VLS_226({
                 text: (q.stem),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_206));
+            }, ...__VLS_functionalComponentArgsRest(__VLS_226));
             if (q.options?.length) {
                 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
                     ...{ class: "question-options" },
@@ -1751,14 +1938,14 @@ else {
                         key: (index),
                     });
                     (String.fromCharCode(65 + index));
-                    const __VLS_210 = MathPreview;
+                    const __VLS_230 = MathPreview;
                     // @ts-ignore
-                    const __VLS_211 = __VLS_asFunctionalComponent1(__VLS_210, new __VLS_210({
+                    const __VLS_231 = __VLS_asFunctionalComponent1(__VLS_230, new __VLS_230({
                         text: (option),
                     }));
-                    const __VLS_212 = __VLS_211({
+                    const __VLS_232 = __VLS_231({
                         text: (option),
-                    }, ...__VLS_functionalComponentArgsRest(__VLS_211));
+                    }, ...__VLS_functionalComponentArgsRest(__VLS_231));
                     // @ts-ignore
                     [];
                 }
@@ -1831,14 +2018,116 @@ else {
                 ...{ class: "question-list-empty" },
             });
             /** @type {__VLS_StyleScopedClasses['question-list-empty']} */ ;
-            let __VLS_215;
+            let __VLS_235;
             /** @ts-ignore @type { | typeof __VLS_components.Search} */
             Search;
             // @ts-ignore
-            const __VLS_216 = __VLS_asFunctionalComponent1(__VLS_215, new __VLS_215({}));
-            const __VLS_217 = __VLS_216({}, ...__VLS_functionalComponentArgsRest(__VLS_216));
+            const __VLS_236 = __VLS_asFunctionalComponent1(__VLS_235, new __VLS_235({}));
+            const __VLS_237 = __VLS_236({}, ...__VLS_functionalComponentArgsRest(__VLS_236));
             __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
             __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
+        }
+        if (__VLS_ctx.filteredQuestions.length > __VLS_ctx.pageSize) {
+            __VLS_asFunctionalElement1(__VLS_intrinsics.nav, __VLS_intrinsics.nav)({
+                ...{ class: "pagination" },
+                'aria-label': "试题列表分页",
+            });
+            /** @type {__VLS_StyleScopedClasses['pagination']} */ ;
+            __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
+                            throw 0;
+                        if (!!(!__VLS_ctx.current))
+                            throw 0;
+                        if (!!(__VLS_ctx.page === 'dashboard'))
+                            throw 0;
+                        if (!!(__VLS_ctx.page === 'tasks'))
+                            throw 0;
+                        if (!!(__VLS_ctx.page === 'papers'))
+                            throw 0;
+                        if (!!(__VLS_ctx.page === 'review'))
+                            throw 0;
+                        if (!(__VLS_ctx.page === 'questions'))
+                            throw 0;
+                        if (!(__VLS_ctx.filteredQuestions.length > __VLS_ctx.pageSize))
+                            throw 0;
+                        return (__VLS_ctx.questionPage--);
+                        // @ts-ignore
+                        [pageSize, filteredQuestions, filteredQuestions, questionPage,];
+                    } },
+                disabled: (__VLS_ctx.questionPage === 1),
+                title: "上一页",
+            });
+            let __VLS_240;
+            /** @ts-ignore @type { | typeof __VLS_components.ChevronLeft} */
+            ChevronLeft;
+            // @ts-ignore
+            const __VLS_241 = __VLS_asFunctionalComponent1(__VLS_240, new __VLS_240({}));
+            const __VLS_242 = __VLS_241({}, ...__VLS_functionalComponentArgsRest(__VLS_241));
+            for (const [value] of __VLS_vFor((__VLS_ctx.visiblePages(__VLS_ctx.questionPage, __VLS_ctx.questionPageCount)))) {
+                __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+                    ...{ onClick: (...[$event]) => {
+                            if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
+                                throw 0;
+                            if (!!(!__VLS_ctx.current))
+                                throw 0;
+                            if (!!(__VLS_ctx.page === 'dashboard'))
+                                throw 0;
+                            if (!!(__VLS_ctx.page === 'tasks'))
+                                throw 0;
+                            if (!!(__VLS_ctx.page === 'papers'))
+                                throw 0;
+                            if (!!(__VLS_ctx.page === 'review'))
+                                throw 0;
+                            if (!(__VLS_ctx.page === 'questions'))
+                                throw 0;
+                            if (!(__VLS_ctx.filteredQuestions.length > __VLS_ctx.pageSize))
+                                throw 0;
+                            return (__VLS_ctx.questionPage = value);
+                            // @ts-ignore
+                            [visiblePages, questionPage, questionPage, questionPage, questionPageCount,];
+                        } },
+                    key: (value),
+                    ...{ class: ({ active: __VLS_ctx.questionPage === value }) },
+                });
+                /** @type {__VLS_StyleScopedClasses['active']} */ ;
+                (value);
+                // @ts-ignore
+                [questionPage,];
+            }
+            __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
+                            throw 0;
+                        if (!!(!__VLS_ctx.current))
+                            throw 0;
+                        if (!!(__VLS_ctx.page === 'dashboard'))
+                            throw 0;
+                        if (!!(__VLS_ctx.page === 'tasks'))
+                            throw 0;
+                        if (!!(__VLS_ctx.page === 'papers'))
+                            throw 0;
+                        if (!!(__VLS_ctx.page === 'review'))
+                            throw 0;
+                        if (!(__VLS_ctx.page === 'questions'))
+                            throw 0;
+                        if (!(__VLS_ctx.filteredQuestions.length > __VLS_ctx.pageSize))
+                            throw 0;
+                        return (__VLS_ctx.questionPage++);
+                        // @ts-ignore
+                        [questionPage,];
+                    } },
+                disabled: (__VLS_ctx.questionPage === __VLS_ctx.questionPageCount),
+                title: "下一页",
+            });
+            let __VLS_245;
+            /** @ts-ignore @type { | typeof __VLS_components.ChevronRight} */
+            ChevronRight;
+            // @ts-ignore
+            const __VLS_246 = __VLS_asFunctionalComponent1(__VLS_245, new __VLS_245({}));
+            const __VLS_247 = __VLS_246({}, ...__VLS_functionalComponentArgsRest(__VLS_246));
+            __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
+            (__VLS_ctx.filteredQuestions.length);
         }
     }
     else {
@@ -1873,17 +2162,17 @@ else {
                         throw 0;
                     return (__VLS_ctx.setTab = 'mine');
                     // @ts-ignore
-                    [filteredQuestions, setTab,];
+                    [filteredQuestions, questionPage, questionPageCount, setTab,];
                 } },
             ...{ class: ({ active: __VLS_ctx.setTab === 'mine' }) },
         });
         /** @type {__VLS_StyleScopedClasses['active']} */ ;
-        let __VLS_220;
+        let __VLS_250;
         /** @ts-ignore @type { | typeof __VLS_components.BookOpenCheck} */
         BookOpenCheck;
         // @ts-ignore
-        const __VLS_221 = __VLS_asFunctionalComponent1(__VLS_220, new __VLS_220({}));
-        const __VLS_222 = __VLS_221({}, ...__VLS_functionalComponentArgsRest(__VLS_221));
+        const __VLS_251 = __VLS_asFunctionalComponent1(__VLS_250, new __VLS_250({}));
+        const __VLS_252 = __VLS_251({}, ...__VLS_functionalComponentArgsRest(__VLS_251));
         __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
         (__VLS_ctx.sets.length);
         __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
@@ -1909,12 +2198,12 @@ else {
             ...{ class: ({ active: __VLS_ctx.setTab === 'sales' }) },
         });
         /** @type {__VLS_StyleScopedClasses['active']} */ ;
-        let __VLS_225;
+        let __VLS_255;
         /** @ts-ignore @type { | typeof __VLS_components.ShoppingBag} */
         ShoppingBag;
         // @ts-ignore
-        const __VLS_226 = __VLS_asFunctionalComponent1(__VLS_225, new __VLS_225({}));
-        const __VLS_227 = __VLS_226({}, ...__VLS_functionalComponentArgsRest(__VLS_226));
+        const __VLS_256 = __VLS_asFunctionalComponent1(__VLS_255, new __VLS_255({}));
+        const __VLS_257 = __VLS_256({}, ...__VLS_functionalComponentArgsRest(__VLS_256));
         __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
             ...{ onClick: (...[$event]) => {
                     if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
@@ -1938,12 +2227,12 @@ else {
             ...{ class: "primary" },
         });
         /** @type {__VLS_StyleScopedClasses['primary']} */ ;
-        let __VLS_230;
+        let __VLS_260;
         /** @ts-ignore @type { | typeof __VLS_components.Plus} */
         Plus;
         // @ts-ignore
-        const __VLS_231 = __VLS_asFunctionalComponent1(__VLS_230, new __VLS_230({}));
-        const __VLS_232 = __VLS_231({}, ...__VLS_functionalComponentArgsRest(__VLS_231));
+        const __VLS_261 = __VLS_asFunctionalComponent1(__VLS_260, new __VLS_260({}));
+        const __VLS_262 = __VLS_261({}, ...__VLS_functionalComponentArgsRest(__VLS_261));
         if (__VLS_ctx.setTab === 'mine') {
             __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
                 ...{ class: "set-list-panel" },
@@ -1970,12 +2259,12 @@ else {
                 });
                 /** @type {__VLS_StyleScopedClasses['set-list-title']} */ ;
                 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({});
-                let __VLS_235;
+                let __VLS_265;
                 /** @ts-ignore @type { | typeof __VLS_components.BookOpenCheck} */
                 BookOpenCheck;
                 // @ts-ignore
-                const __VLS_236 = __VLS_asFunctionalComponent1(__VLS_235, new __VLS_235({}));
-                const __VLS_237 = __VLS_236({}, ...__VLS_functionalComponentArgsRest(__VLS_236));
+                const __VLS_266 = __VLS_asFunctionalComponent1(__VLS_265, new __VLS_265({}));
+                const __VLS_267 = __VLS_266({}, ...__VLS_functionalComponentArgsRest(__VLS_266));
                 __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
                 __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
                 (s.title);
@@ -2102,12 +2391,12 @@ else {
                     ...{ class: "set-list-empty" },
                 });
                 /** @type {__VLS_StyleScopedClasses['set-list-empty']} */ ;
-                let __VLS_240;
+                let __VLS_270;
                 /** @ts-ignore @type { | typeof __VLS_components.BookOpenCheck} */
                 BookOpenCheck;
                 // @ts-ignore
-                const __VLS_241 = __VLS_asFunctionalComponent1(__VLS_240, new __VLS_240({}));
-                const __VLS_242 = __VLS_241({}, ...__VLS_functionalComponentArgsRest(__VLS_241));
+                const __VLS_271 = __VLS_asFunctionalComponent1(__VLS_270, new __VLS_270({}));
+                const __VLS_272 = __VLS_271({}, ...__VLS_functionalComponentArgsRest(__VLS_271));
                 __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
                 __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
                 __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
@@ -2137,12 +2426,12 @@ else {
                     ...{ class: "primary" },
                 });
                 /** @type {__VLS_StyleScopedClasses['primary']} */ ;
-                let __VLS_245;
+                let __VLS_275;
                 /** @ts-ignore @type { | typeof __VLS_components.Plus} */
                 Plus;
                 // @ts-ignore
-                const __VLS_246 = __VLS_asFunctionalComponent1(__VLS_245, new __VLS_245({}));
-                const __VLS_247 = __VLS_246({}, ...__VLS_functionalComponentArgsRest(__VLS_246));
+                const __VLS_276 = __VLS_asFunctionalComponent1(__VLS_275, new __VLS_275({}));
+                const __VLS_277 = __VLS_276({}, ...__VLS_functionalComponentArgsRest(__VLS_276));
             }
         }
         else {
@@ -2150,12 +2439,12 @@ else {
                 ...{ class: "sales-panel" },
             });
             /** @type {__VLS_StyleScopedClasses['sales-panel']} */ ;
-            let __VLS_250;
+            let __VLS_280;
             /** @ts-ignore @type { | typeof __VLS_components.ShoppingBag} */
             ShoppingBag;
             // @ts-ignore
-            const __VLS_251 = __VLS_asFunctionalComponent1(__VLS_250, new __VLS_250({}));
-            const __VLS_252 = __VLS_251({}, ...__VLS_functionalComponentArgsRest(__VLS_251));
+            const __VLS_281 = __VLS_asFunctionalComponent1(__VLS_280, new __VLS_280({}));
+            const __VLS_282 = __VLS_281({}, ...__VLS_functionalComponentArgsRest(__VLS_281));
             __VLS_asFunctionalElement1(__VLS_intrinsics.h2, __VLS_intrinsics.h2)({});
             __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({});
             (__VLS_ctx.sets.filter(item => item.status === 'published').length);
@@ -2220,12 +2509,12 @@ else {
             ...{ class: "dropzone" },
         });
         /** @type {__VLS_StyleScopedClasses['dropzone']} */ ;
-        let __VLS_255;
+        let __VLS_285;
         /** @ts-ignore @type { | typeof __VLS_components.UploadCloud} */
         UploadCloud;
         // @ts-ignore
-        const __VLS_256 = __VLS_asFunctionalComponent1(__VLS_255, new __VLS_255({}));
-        const __VLS_257 = __VLS_256({}, ...__VLS_functionalComponentArgsRest(__VLS_256));
+        const __VLS_286 = __VLS_asFunctionalComponent1(__VLS_285, new __VLS_285({}));
+        const __VLS_287 = __VLS_286({}, ...__VLS_functionalComponentArgsRest(__VLS_286));
         __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
         __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
         __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
@@ -2285,9 +2574,9 @@ else {
         /** @type {__VLS_StyleScopedClasses['wide']} */ ;
     }
     if (__VLS_ctx.page === 'assembly') {
-        const __VLS_260 = QuestionSetAssembler;
+        const __VLS_290 = QuestionSetAssembler;
         // @ts-ignore
-        const __VLS_261 = __VLS_asFunctionalComponent1(__VLS_260, new __VLS_260({
+        const __VLS_291 = __VLS_asFunctionalComponent1(__VLS_290, new __VLS_290({
             ...{ 'onClose': {} },
             ...{ 'onSave': {} },
             questions: (__VLS_ctx.confirmedQuestions),
@@ -2295,38 +2584,38 @@ else {
             editing: (!!__VLS_ctx.editingSetId),
             saving: (__VLS_ctx.busy),
         }));
-        const __VLS_262 = __VLS_261({
+        const __VLS_292 = __VLS_291({
             ...{ 'onClose': {} },
             ...{ 'onSave': {} },
             questions: (__VLS_ctx.confirmedQuestions),
             initial: (__VLS_ctx.setForm),
             editing: (!!__VLS_ctx.editingSetId),
             saving: (__VLS_ctx.busy),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_261));
-        let __VLS_265;
-        const __VLS_266 = {
-            /** @type {typeof __VLS_265.close} */
+        }, ...__VLS_functionalComponentArgsRest(__VLS_291));
+        let __VLS_295;
+        const __VLS_296 = {
+            /** @type {typeof __VLS_295.close} */
             onClose: (__VLS_ctx.closeSetEditor),
         };
-        const __VLS_267 = {
-            /** @type {typeof __VLS_265.save} */
+        const __VLS_297 = {
+            /** @type {typeof __VLS_295.save} */
             onSave: (__VLS_ctx.saveSetForm),
         };
-        var __VLS_263;
-        var __VLS_264;
+        var __VLS_293;
+        var __VLS_294;
     }
     if (__VLS_ctx.page === 'review' && __VLS_ctx.selectedQuestion?.boundaryQuality) {
-        let __VLS_268;
+        let __VLS_298;
         /** @ts-ignore @type { | typeof __VLS_components.Teleport | typeof __VLS_components.Teleport} */
         Teleport;
         // @ts-ignore
-        const __VLS_269 = __VLS_asFunctionalComponent1(__VLS_268, new __VLS_268({
+        const __VLS_299 = __VLS_asFunctionalComponent1(__VLS_298, new __VLS_298({
             to: ".inspector",
         }));
-        const __VLS_270 = __VLS_269({
+        const __VLS_300 = __VLS_299({
             to: ".inspector",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_269));
-        const { default: __VLS_273 } = __VLS_271.slots;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_299));
+        const { default: __VLS_303 } = __VLS_301.slots;
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
             ...{ class: "boundary-quality" },
             'data-review': (__VLS_ctx.selectedQuestion.boundaryQuality.requiresManualReview),
@@ -2334,20 +2623,20 @@ else {
         /** @type {__VLS_StyleScopedClasses['boundary-quality']} */ ;
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({});
         if (__VLS_ctx.selectedQuestion.boundaryQuality.requiresManualReview) {
-            let __VLS_274;
+            let __VLS_304;
             /** @ts-ignore @type { | typeof __VLS_components.AlertTriangle} */
             AlertTriangle;
             // @ts-ignore
-            const __VLS_275 = __VLS_asFunctionalComponent1(__VLS_274, new __VLS_274({}));
-            const __VLS_276 = __VLS_275({}, ...__VLS_functionalComponentArgsRest(__VLS_275));
+            const __VLS_305 = __VLS_asFunctionalComponent1(__VLS_304, new __VLS_304({}));
+            const __VLS_306 = __VLS_305({}, ...__VLS_functionalComponentArgsRest(__VLS_305));
         }
         else {
-            let __VLS_279;
+            let __VLS_309;
             /** @ts-ignore @type { | typeof __VLS_components.CheckCircle2} */
             CheckCircle2;
             // @ts-ignore
-            const __VLS_280 = __VLS_asFunctionalComponent1(__VLS_279, new __VLS_279({}));
-            const __VLS_281 = __VLS_280({}, ...__VLS_functionalComponentArgsRest(__VLS_280));
+            const __VLS_310 = __VLS_asFunctionalComponent1(__VLS_309, new __VLS_309({}));
+            const __VLS_311 = __VLS_310({}, ...__VLS_functionalComponentArgsRest(__VLS_310));
         }
         __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
         (__VLS_ctx.selectedQuestion.boundaryQuality.score);
@@ -2363,20 +2652,20 @@ else {
         }
         // @ts-ignore
         [];
-        var __VLS_271;
+        var __VLS_301;
     }
     if (__VLS_ctx.page === 'review' && __VLS_ctx.selectedQuestion) {
-        let __VLS_284;
+        let __VLS_314;
         /** @ts-ignore @type { | typeof __VLS_components.Teleport | typeof __VLS_components.Teleport} */
         Teleport;
         // @ts-ignore
-        const __VLS_285 = __VLS_asFunctionalComponent1(__VLS_284, new __VLS_284({
+        const __VLS_315 = __VLS_asFunctionalComponent1(__VLS_314, new __VLS_314({
             to: ".review-actions",
         }));
-        const __VLS_286 = __VLS_285({
+        const __VLS_316 = __VLS_315({
             to: ".review-actions",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_285));
-        const { default: __VLS_289 } = __VLS_287.slots;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_315));
+        const { default: __VLS_319 } = __VLS_317.slots;
         if (__VLS_ctx.selectedQuestion.figureUrls?.length) {
             __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
                 ...{ onClick: (...[$event]) => {
@@ -2395,12 +2684,12 @@ else {
                 ...{ class: "layout-button" },
             });
             /** @type {__VLS_StyleScopedClasses['layout-button']} */ ;
-            let __VLS_290;
+            let __VLS_320;
             /** @ts-ignore @type { | typeof __VLS_components.Settings2} */
             Settings2;
             // @ts-ignore
-            const __VLS_291 = __VLS_asFunctionalComponent1(__VLS_290, new __VLS_290({}));
-            const __VLS_292 = __VLS_291({}, ...__VLS_functionalComponentArgsRest(__VLS_291));
+            const __VLS_321 = __VLS_asFunctionalComponent1(__VLS_320, new __VLS_320({}));
+            const __VLS_322 = __VLS_321({}, ...__VLS_functionalComponentArgsRest(__VLS_321));
         }
         __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
             ...{ onClick: (__VLS_ctx.saveQuestion) },
@@ -2409,29 +2698,29 @@ else {
         });
         /** @type {__VLS_StyleScopedClasses['primary']} */ ;
         /** @type {__VLS_StyleScopedClasses['save-question-top']} */ ;
-        let __VLS_295;
+        let __VLS_325;
         /** @ts-ignore @type { | typeof __VLS_components.CheckCircle2} */
         CheckCircle2;
         // @ts-ignore
-        const __VLS_296 = __VLS_asFunctionalComponent1(__VLS_295, new __VLS_295({}));
-        const __VLS_297 = __VLS_296({}, ...__VLS_functionalComponentArgsRest(__VLS_296));
+        const __VLS_326 = __VLS_asFunctionalComponent1(__VLS_325, new __VLS_325({}));
+        const __VLS_327 = __VLS_326({}, ...__VLS_functionalComponentArgsRest(__VLS_326));
         (__VLS_ctx.busy ? '保存中' : '确认并保存题目');
         // @ts-ignore
         [busy, busy, saveQuestion,];
-        var __VLS_287;
+        var __VLS_317;
     }
     if (__VLS_ctx.page === 'review' && __VLS_ctx.selectedPaper?.status === 'processing' && __VLS_ctx.processingDetail) {
-        let __VLS_300;
+        let __VLS_330;
         /** @ts-ignore @type { | typeof __VLS_components.Teleport | typeof __VLS_components.Teleport} */
         Teleport;
         // @ts-ignore
-        const __VLS_301 = __VLS_asFunctionalComponent1(__VLS_300, new __VLS_300({
+        const __VLS_331 = __VLS_asFunctionalComponent1(__VLS_330, new __VLS_330({
             to: ".processing",
         }));
-        const __VLS_302 = __VLS_301({
+        const __VLS_332 = __VLS_331({
             to: ".processing",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_301));
-        const { default: __VLS_305 } = __VLS_303.slots;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_331));
+        const { default: __VLS_335 } = __VLS_333.slots;
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
             ...{ class: "pipeline-detail" },
         });
@@ -2473,69 +2762,69 @@ else {
         }
         // @ts-ignore
         [];
-        var __VLS_303;
+        var __VLS_333;
     }
     if (__VLS_ctx.page === 'review' && __VLS_ctx.selectedPaper && __VLS_ctx.selectedQuestion) {
-        let __VLS_306;
+        let __VLS_336;
         /** @ts-ignore @type { | typeof __VLS_components.Teleport | typeof __VLS_components.Teleport} */
         Teleport;
         // @ts-ignore
-        const __VLS_307 = __VLS_asFunctionalComponent1(__VLS_306, new __VLS_306({
+        const __VLS_337 = __VLS_asFunctionalComponent1(__VLS_336, new __VLS_336({
             to: ".crop-placeholder",
         }));
-        const __VLS_308 = __VLS_307({
+        const __VLS_338 = __VLS_337({
             to: ".crop-placeholder",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_307));
-        const { default: __VLS_311 } = __VLS_309.slots;
-        const __VLS_312 = SourcePaperPreview;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_337));
+        const { default: __VLS_341 } = __VLS_339.slots;
+        const __VLS_342 = SourcePaperPreview;
         // @ts-ignore
-        const __VLS_313 = __VLS_asFunctionalComponent1(__VLS_312, new __VLS_312({
+        const __VLS_343 = __VLS_asFunctionalComponent1(__VLS_342, new __VLS_342({
             ...{ 'onUpdate:regions': {} },
             ...{ 'onRecognize': {} },
             paper: (__VLS_ctx.selectedPaper),
             question: (__VLS_ctx.selectedQuestion),
             recognizing: (__VLS_ctx.recognizing),
         }));
-        const __VLS_314 = __VLS_313({
+        const __VLS_344 = __VLS_343({
             ...{ 'onUpdate:regions': {} },
             ...{ 'onRecognize': {} },
             paper: (__VLS_ctx.selectedPaper),
             question: (__VLS_ctx.selectedQuestion),
             recognizing: (__VLS_ctx.recognizing),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_313));
-        let __VLS_317;
-        const __VLS_318 = {
-            /** @type {typeof __VLS_317.'update:regions'} */
+        }, ...__VLS_functionalComponentArgsRest(__VLS_343));
+        let __VLS_347;
+        const __VLS_348 = {
+            /** @type {typeof __VLS_347.'update:regions'} */
             'onUpdate:regions': (__VLS_ctx.updateRegions),
         };
-        const __VLS_319 = {
-            /** @type {typeof __VLS_317.recognize} */
+        const __VLS_349 = {
+            /** @type {typeof __VLS_347.recognize} */
             onRecognize: (__VLS_ctx.reprocessSelected),
         };
-        var __VLS_315;
-        var __VLS_316;
+        var __VLS_345;
+        var __VLS_346;
         // @ts-ignore
         [page, selectedPaper, selectedPaper, selectedQuestion, selectedQuestion, recognizing, updateRegions, reprocessSelected,];
-        var __VLS_309;
+        var __VLS_339;
     }
     if (__VLS_ctx.layoutOpen && __VLS_ctx.selectedQuestion) {
-        const __VLS_320 = LayoutCanvasEditor;
+        const __VLS_350 = LayoutCanvasEditor;
         // @ts-ignore
-        const __VLS_321 = __VLS_asFunctionalComponent1(__VLS_320, new __VLS_320({
+        const __VLS_351 = __VLS_asFunctionalComponent1(__VLS_350, new __VLS_350({
             ...{ 'onClose': {} },
             ...{ 'onSave': {} },
             question: (__VLS_ctx.selectedQuestion),
             saving: (__VLS_ctx.busy),
         }));
-        const __VLS_322 = __VLS_321({
+        const __VLS_352 = __VLS_351({
             ...{ 'onClose': {} },
             ...{ 'onSave': {} },
             question: (__VLS_ctx.selectedQuestion),
             saving: (__VLS_ctx.busy),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_321));
-        let __VLS_325;
-        const __VLS_326 = {
-            /** @type {typeof __VLS_325.close} */
+        }, ...__VLS_functionalComponentArgsRest(__VLS_351));
+        let __VLS_355;
+        const __VLS_356 = {
+            /** @type {typeof __VLS_355.close} */
             onClose: (...[$event]) => {
                 if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
                     throw 0;
@@ -2548,12 +2837,12 @@ else {
                 [busy, selectedQuestion, selectedQuestion, layoutOpen, layoutOpen,];
             },
         };
-        const __VLS_327 = {
-            /** @type {typeof __VLS_325.save} */
+        const __VLS_357 = {
+            /** @type {typeof __VLS_355.save} */
             onSave: (__VLS_ctx.saveLayout),
         };
-        var __VLS_323;
-        var __VLS_324;
+        var __VLS_353;
+        var __VLS_354;
     }
     if (__VLS_ctx.toast) {
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({

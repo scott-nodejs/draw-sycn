@@ -12,4 +12,5 @@ import './task-center.css';
 import './public-site.css';
 import './brand.css';
 import './question-library.css';
+import './pagination.css';
 createApp(App).mount('#app');
