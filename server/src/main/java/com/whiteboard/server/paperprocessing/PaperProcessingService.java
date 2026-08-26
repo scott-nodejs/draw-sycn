@@ -19,10 +19,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.HashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+import javax.annotation.PreDestroy;
 import javax.imageio.ImageIO;
 import javax.annotation.PostConstruct;
 import org.springframework.http.HttpStatus;
@@ -37,6 +41,7 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class PaperProcessingService {
   private static final Logger log = LoggerFactory.getLogger(PaperProcessingService.class);
+  private static final int MAX_CONCURRENT_JOBS = 2;
   private final JdbcTemplate jdbc;
   private final ObjectMapper json;
   private final OcrProviderRouter ocrProviders;
@@ -52,6 +57,8 @@ public class PaperProcessingService {
   private final RecognitionReportService recognitionReports;
   private final KnowledgePointClassifierService knowledgePointClassifier;
   private final TransactionTemplate transactions;
+  private final ExecutorService processingExecutor = Executors.newFixedThreadPool(MAX_CONCURRENT_JOBS);
+  private final AtomicInteger activeJobs = new AtomicInteger(0);
 
   public PaperProcessingService(JdbcTemplate jdbc, ObjectMapper json, OcrProviderRouter ocrProviders, DeepseekClient deepseek,
       DocumentNormalizer normalizer, PaddleDocLayoutClient layoutClient, PageInspector pageInspector,
@@ -106,18 +113,34 @@ public class PaperProcessingService {
     }
   }
 
+  @PreDestroy
+  public void shutdownProcessingExecutor() {
+    processingExecutor.shutdownNow();
+  }
+
   @Scheduled(fixedDelayString = "${PAPER_PROCESSING_INTERVAL_MS:5000}")
   public void tick() {
-    List<Map<String, Object>> jobs = jdbc.query("SELECT id,paper_id,status,stage,provider,request_id,retry_count FROM teaching_parse_job WHERE status IN ('queued','processing') AND (next_retry_at IS NULL OR next_retry_at<=?) AND (locked_at IS NULL OR locked_at<?) ORDER BY created_at LIMIT 1",
+    int capacity = MAX_CONCURRENT_JOBS - activeJobs.get();
+    if (capacity <= 0) return;
+    List<Map<String, Object>> jobs = jdbc.query("SELECT id,paper_id,status,stage,provider,request_id,retry_count FROM teaching_parse_job WHERE status IN ('queued','processing') AND (next_retry_at IS NULL OR next_retry_at<=?) AND (locked_at IS NULL OR locked_at<?) ORDER BY created_at LIMIT ?",
       (rs, n) -> { Map<String, Object> row = new LinkedHashMap<>(); row.put("id", rs.getString("id")); row.put("paperId", rs.getString("paper_id")); row.put("stage", rs.getString("stage")); row.put("provider", rs.getString("provider")); row.put("requestId", rs.getString("request_id")); row.put("retryCount", rs.getInt("retry_count")); return row; },
-      Timestamp.valueOf(LocalDateTime.now()), Timestamp.valueOf(LocalDateTime.now().minusMinutes(10)));
+      Timestamp.valueOf(LocalDateTime.now()), Timestamp.valueOf(LocalDateTime.now().minusMinutes(10)), capacity);
     if (jobs.isEmpty()) return;
-    Map<String, Object> job = jobs.get(0); String id = string(job.get("id"));
-    if (jdbc.update("UPDATE teaching_parse_job SET locked_at=?,updated_at=? WHERE id=? AND (locked_at IS NULL OR locked_at<?)", now(), now(), id, Timestamp.valueOf(LocalDateTime.now().minusMinutes(10))) == 0) return;
-    log.info("Paper job claimed: jobId={}, paperId={}, stage={}, retryCount={}", id, job.get("paperId"), job.get("stage"), job.get("retryCount"));
-    try { process(job); } catch (Exception error) {
-      log.error("Paper job execution failed: jobId={}, paperId={}, stage={}", id, job.get("paperId"), job.get("stage"), error);
-      failOrRetry(job, error);
+    for (Map<String, Object> job : jobs) {
+      if (activeJobs.get() >= MAX_CONCURRENT_JOBS) return;
+      String id = string(job.get("id"));
+      if (jdbc.update("UPDATE teaching_parse_job SET locked_at=?,updated_at=? WHERE id=? AND (locked_at IS NULL OR locked_at<?)", now(), now(), id, Timestamp.valueOf(LocalDateTime.now().minusMinutes(10))) == 0) continue;
+      activeJobs.incrementAndGet();
+      log.info("Paper job claimed: jobId={}, paperId={}, stage={}, retryCount={}, activeJobs={}", id, job.get("paperId"), job.get("stage"), job.get("retryCount"), activeJobs.get());
+      processingExecutor.submit(() -> {
+        try { process(job); } catch (Exception error) {
+          log.error("Paper job execution failed: jobId={}, paperId={}, stage={}", id, job.get("paperId"), job.get("stage"), error);
+          failOrRetry(job, error);
+        } finally {
+          int active = activeJobs.decrementAndGet();
+          log.info("Paper job released: jobId={}, activeJobs={}", id, active);
+        }
+      });
     }
   }
 

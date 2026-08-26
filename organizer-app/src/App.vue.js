@@ -69,7 +69,7 @@ async function reparsePaper() {
 }
 async function retryTask(p) { await run(async () => { await api.retry(p.id); await load(); notify('已重新启动试卷解析任务'); }); }
 async function submitUpload() { if (!files.value.length)
-    return error.value = '请选择 PDF 或图片'; await run(async () => { const paper = await api.upload(files.value, upload.value); uploadOpen.value = false; files.value = []; await load(); notify('上传成功，AI 已开始解析'); await openPaper(paper); }); }
+    return error.value = '请选择 PDF、图片或 ZIP'; await run(async () => { const result = await api.upload(files.value, upload.value); const uploaded = Array.isArray(result) ? result : [result]; uploadOpen.value = false; files.value = []; await load(); notify(uploaded.length > 1 ? `已创建 ${uploaded.length} 个解析任务` : '上传成功，AI 已开始解析'); await openPaper(uploaded[0]); }); }
 async function saveQuestion() { if (!selectedQuestion.value)
     return; await run(async () => { selectedQuestion.value = await api.saveQuestion({ ...selectedQuestion.value, status: 'confirmed' }); const i = questions.value.findIndex(q => q.id === selectedQuestion.value.id); questions.value[i] = selectedQuestion.value; notify('校对结果已保存'); await load(); }); }
 async function saveLayout(layout) { if (!selectedQuestion.value)
@@ -2241,7 +2241,7 @@ else {
                     [files,];
                 } },
             type: "file",
-            accept: "application/pdf,image/*",
+            accept: "application/pdf,image/*,.zip,application/zip,application/x-zip-compressed",
             multiple: true,
         });
         if (__VLS_ctx.files.length) {

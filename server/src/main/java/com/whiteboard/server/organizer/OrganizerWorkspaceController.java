@@ -33,12 +33,23 @@ public class OrganizerWorkspaceController {
 
   @PostMapping(value = "/papers", consumes = "multipart/form-data")
   @ResponseStatus(HttpStatus.CREATED)
-  public Map<String, Object> upload(@RequestParam("file") MultipartFile[] files,
+  public Object upload(@RequestParam("file") MultipartFile[] files,
       @RequestParam String title, @RequestParam String subject, @RequestParam String grade,
       @RequestHeader("X-User-Id") String userId) throws IOException {
+    if (files.length == 1 && isZip(files[0])) {
+      List<Map<String, Object>> papers = teaching.createPapersFromZip(files[0], title, subject, grade, "", userId);
+      for (Map<String, Object> paper : papers) organizer.attachPaper(String.valueOf(paper.get("id")), userId);
+      return papers;
+    }
     Map<String, Object> paper = teaching.createPaper(Arrays.asList(files), title, subject, grade, "", userId);
     organizer.attachPaper(String.valueOf(paper.get("id")), userId);
     return paper;
+  }
+
+  private boolean isZip(MultipartFile file) {
+    String type = file.getContentType() == null ? "" : file.getContentType().toLowerCase();
+    String name = file.getOriginalFilename() == null ? "" : file.getOriginalFilename().toLowerCase();
+    return "application/zip".equals(type) || "application/x-zip-compressed".equals(type) || name.endsWith(".zip");
   }
 
   @GetMapping("/papers/{paperId}/questions")

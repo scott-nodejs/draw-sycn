@@ -47,14 +47,22 @@ public class TeachingPlatformController {
 
   @PostMapping(value = "/papers", consumes = "multipart/form-data")
   @ResponseStatus(HttpStatus.CREATED)
-  public Map<String, Object> createPaper(
+  public Object createPaper(
       @RequestParam("file") MultipartFile[] files,
       @RequestParam String title,
       @RequestParam String subject,
       @RequestParam String grade,
       @RequestHeader(value = "X-Organization-Id", defaultValue = "") String organizationId,
       @RequestHeader("X-User-Id") String creatorId) throws IOException {
+    if (files.length == 1 && isZip(files[0]))
+      return service.createPapersFromZip(files[0], title, subject, grade, organizationId, creatorId);
     return service.createPaper(Arrays.asList(files), title, subject, grade, organizationId, creatorId);
+  }
+
+  private boolean isZip(MultipartFile file) {
+    String type = file.getContentType() == null ? "" : file.getContentType().toLowerCase();
+    String name = file.getOriginalFilename() == null ? "" : file.getOriginalFilename().toLowerCase();
+    return "application/zip".equals(type) || "application/x-zip-compressed".equals(type) || name.endsWith(".zip");
   }
 
   @DeleteMapping("/papers/{paperId}")

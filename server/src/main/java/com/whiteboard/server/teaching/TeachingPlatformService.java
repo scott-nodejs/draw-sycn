@@ -9,6 +9,8 @@ import com.whiteboard.server.paperprocessing.QuestionReprocessingService;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -25,6 +27,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.Comparator;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.core.io.PathResource;
@@ -111,25 +115,49 @@ public class TeachingPlatformService {
     return createDocumentBatch(files, title, subject, grade, organizationId, creatorId, "教师上传");
   }
 
+  @Transactional
+  public List<Map<String, Object>> createPapersFromZip(MultipartFile zipFile, String title, String subject, String grade,
+      String organizationId, String creatorId) throws IOException {
+    if (zipFile == null || zipFile.isEmpty()) throw badRequest("请选择 ZIP 文件");
+    if (!isZip(zipFile)) throw badRequest("仅支持 ZIP 压缩包");
+    Map<String, List<ZipDocumentFile>> groups = unzipDocumentGroups(zipFile);
+    if (groups.isEmpty()) throw badRequest("ZIP 中没有可识别的 PDF 或图片文件");
+    List<Map<String, Object>> papers = new ArrayList<>();
+    boolean single = groups.size() == 1;
+    for (Map.Entry<String, List<ZipDocumentFile>> entry : groups.entrySet()) {
+      String batchTitle = single ? title : required(title, "导入批次名称") + " - " + readableZipGroupName(entry.getKey());
+      papers.add(createDocumentBatchSources(entry.getValue(), batchTitle, subject, grade, organizationId, creatorId, "教师上传"));
+    }
+    return papers;
+  }
+
   private Map<String, Object> createDocumentBatch(List<MultipartFile> files, String title, String subject, String grade,
       String organizationId, String creatorId, String sourceType) throws IOException {
-    if (files == null || files.isEmpty() || files.stream().allMatch(MultipartFile::isEmpty)) throw badRequest("请选择 PDF 或图片文件");
-    files = new ArrayList<>(files);
-    files.removeIf(MultipartFile::isEmpty);
-    if (files.size() > 30) throw badRequest("图片试卷最多支持 30 张");
-    boolean hasPdf = files.stream().anyMatch(this::isPdf);
-    boolean hasImage = files.stream().anyMatch(this::isImage);
-    if (files.stream().anyMatch(file -> !isPdf(file) && !isImage(file))) throw badRequest("仅支持 PDF、JPG、PNG、WEBP 文件");
-    if (hasPdf && (hasImage || files.size() > 1)) throw badRequest("PDF 与图片不能混合上传，且每次只能上传一个 PDF");
-    long totalSize = files.stream().mapToLong(MultipartFile::getSize).sum();
+    List<MultipartSourceFile> sourceFiles = files == null ? Collections.emptyList()
+      : files.stream().map(MultipartSourceFile::new).collect(java.util.stream.Collectors.toList());
+    return createDocumentBatchSources(sourceFiles,
+      title, subject, grade, organizationId, creatorId, sourceType);
+  }
+
+  private Map<String, Object> createDocumentBatchSources(List<? extends DocumentSourceFile> files, String title, String subject, String grade,
+      String organizationId, String creatorId, String sourceType) throws IOException {
+    if (files == null || files.isEmpty() || files.stream().allMatch(DocumentSourceFile::isEmpty)) throw badRequest("请选择 PDF 或图片文件");
+    List<DocumentSourceFile> sourceFiles = new ArrayList<>(files);
+    sourceFiles.removeIf(DocumentSourceFile::isEmpty);
+    if (sourceFiles.size() > 30) throw badRequest("图片试卷最多支持 30 张");
+    boolean hasPdf = sourceFiles.stream().anyMatch(this::isPdf);
+    boolean hasImage = sourceFiles.stream().anyMatch(this::isImage);
+    if (sourceFiles.stream().anyMatch(file -> !isPdf(file) && !isImage(file))) throw badRequest("仅支持 PDF、JPG、PNG、WEBP 文件");
+    if (hasPdf && (hasImage || sourceFiles.size() > 1)) throw badRequest("PDF 与图片不能混合上传，且每次只能上传一个 PDF");
+    long totalSize = sourceFiles.stream().mapToLong(DocumentSourceFile::getSize).sum();
     if (totalSize > 100L * 1024L * 1024L) throw badRequest("上传文件总大小不能超过 100 MB");
 
     String id = newId("试题导入".equals(sourceType) ? "questionbatch" : "paper");
     Path directory = Paths.get(properties.getStorageRoot(), "papers", id).normalize();
     Files.createDirectories(directory);
     List<Map<String, Object>> sources = new ArrayList<>();
-    for (int index = 0; index < files.size(); index++) {
-      MultipartFile file = files.get(index);
+    for (int index = 0; index < sourceFiles.size(); index++) {
+      DocumentSourceFile file = sourceFiles.get(index);
       String extension = isPdf(file) ? "pdf" : imageExtension(file);
       String storedName = isPdf(file) ? "original.pdf" : String.format("page-%03d.%s", index + 1, extension);
       Path sourcePath = directory.resolve(storedName).normalize();
@@ -156,18 +184,105 @@ public class TeachingPlatformService {
     return getPaper(id);
   }
 
-  private boolean isPdf(MultipartFile file) {
+  private Map<String, List<ZipDocumentFile>> unzipDocumentGroups(MultipartFile zipFile) throws IOException {
+    try {
+      return unzipDocumentGroups(zipFile, StandardCharsets.UTF_8);
+    } catch (IllegalArgumentException utf8Error) {
+      try {
+        return unzipDocumentGroups(zipFile, Charset.forName("GBK"));
+      } catch (IllegalArgumentException gbkError) {
+        throw badRequest("ZIP 文件名编码不受支持，请使用 UTF-8 编码重新压缩");
+      }
+    }
+  }
+
+  private Map<String, List<ZipDocumentFile>> unzipDocumentGroups(MultipartFile zipFile, Charset charset) throws IOException {
+    Map<String, List<ZipDocumentFile>> groups = new LinkedHashMap<>();
+    byte[] buffer = new byte[8192];
+    long totalSize = 0;
+    int fileCount = 0;
+    try (ZipInputStream input = new ZipInputStream(zipFile.getInputStream(), charset)) {
+      ZipEntry entry;
+      while ((entry = input.getNextEntry()) != null) {
+        if (entry.isDirectory()) continue;
+        String entryName = normalizeZipEntryName(entry.getName());
+        if (entryName.isEmpty()) continue;
+        String lower = entryName.toLowerCase();
+        if (!isSupportedZipDocument(lower)) continue;
+        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+        int read;
+        while ((read = input.read(buffer)) > 0) {
+          totalSize += read;
+          if (totalSize > 300L * 1024L * 1024L) throw badRequest("ZIP 解压后总大小不能超过 300 MB");
+          bytes.write(buffer, 0, read);
+        }
+        fileCount++;
+        if (fileCount > 200) throw badRequest("ZIP 内文件数量不能超过 200 个");
+        String group = zipGroupName(entryName, lower.endsWith(".pdf"));
+        groups.computeIfAbsent(group, key -> new ArrayList<>())
+          .add(new ZipDocumentFile(entryName, contentTypeForName(lower), bytes.toByteArray()));
+      }
+    }
+    for (List<ZipDocumentFile> groupFiles : groups.values()) {
+      groupFiles.sort(Comparator.comparing(ZipDocumentFile::getOriginalFilename));
+    }
+    return groups;
+  }
+
+  private String normalizeZipEntryName(String name) {
+    String normalized = safe(name).replace('\\', '/');
+    while (normalized.startsWith("/")) normalized = normalized.substring(1);
+    if (normalized.isEmpty() || normalized.contains("..") || normalized.startsWith("__MACOSX/")) return "";
+    String last = normalized.substring(normalized.lastIndexOf('/') + 1);
+    if (last.startsWith(".") || last.trim().isEmpty()) return "";
+    return normalized;
+  }
+
+  private boolean isSupportedZipDocument(String lowerName) {
+    return lowerName.endsWith(".pdf") || lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg")
+      || lowerName.endsWith(".png") || lowerName.endsWith(".webp");
+  }
+
+  private String zipGroupName(String entryName, boolean pdf) {
+    if (pdf) {
+      String withoutExtension = entryName.substring(0, entryName.length() - 4);
+      return withoutExtension.replace('/', ' ');
+    }
+    int slash = entryName.indexOf('/');
+    if (slash > 0) return entryName.substring(0, slash);
+    return "根目录图片";
+  }
+
+  private String readableZipGroupName(String value) {
+    String name = safe(value).replace('_', ' ').replace('-', ' ');
+    return name.isEmpty() ? "未命名试卷" : name;
+  }
+
+  private String contentTypeForName(String lowerName) {
+    if (lowerName.endsWith(".pdf")) return "application/pdf";
+    if (lowerName.endsWith(".png")) return "image/png";
+    if (lowerName.endsWith(".webp")) return "image/webp";
+    return "image/jpeg";
+  }
+
+  private boolean isZip(MultipartFile file) {
+    String type = safe(file.getContentType()).toLowerCase();
+    String name = safe(file.getOriginalFilename()).toLowerCase();
+    return "application/zip".equals(type) || "application/x-zip-compressed".equals(type) || name.endsWith(".zip");
+  }
+
+  private boolean isPdf(DocumentSourceFile file) {
     String name = safe(file.getOriginalFilename()).toLowerCase();
     return "application/pdf".equalsIgnoreCase(file.getContentType()) || name.endsWith(".pdf");
   }
 
-  private boolean isImage(MultipartFile file) {
+  private boolean isImage(DocumentSourceFile file) {
     String type = safe(file.getContentType()).toLowerCase();
     String name = safe(file.getOriginalFilename()).toLowerCase();
     return type.startsWith("image/") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png") || name.endsWith(".webp");
   }
 
-  private String imageExtension(MultipartFile file) {
+  private String imageExtension(DocumentSourceFile file) {
     String name = safe(file.getOriginalFilename()).toLowerCase();
     if (name.endsWith(".png")) return "png";
     if (name.endsWith(".webp")) return "webp";
@@ -691,4 +806,36 @@ public class TeachingPlatformService {
   private BigDecimal decimalValue(Object value) { return value instanceof BigDecimal ? (BigDecimal) value : new BigDecimal(stringValue(value)); }
   private ResponseStatusException badRequest(String message) { return new ResponseStatusException(HttpStatus.BAD_REQUEST, message); }
   private ResponseStatusException notFound(String message) { return new ResponseStatusException(HttpStatus.NOT_FOUND, message); }
+
+  private interface DocumentSourceFile {
+    boolean isEmpty();
+    String getOriginalFilename();
+    String getContentType();
+    long getSize();
+    InputStream getInputStream() throws IOException;
+  }
+
+  private static class MultipartSourceFile implements DocumentSourceFile {
+    private final MultipartFile file;
+    MultipartSourceFile(MultipartFile file) { this.file = file; }
+    public boolean isEmpty() { return file.isEmpty(); }
+    public String getOriginalFilename() { return file.getOriginalFilename(); }
+    public String getContentType() { return file.getContentType(); }
+    public long getSize() { return file.getSize(); }
+    public InputStream getInputStream() throws IOException { return file.getInputStream(); }
+  }
+
+  private static class ZipDocumentFile implements DocumentSourceFile {
+    private final String originalFilename;
+    private final String contentType;
+    private final byte[] content;
+    ZipDocumentFile(String originalFilename, String contentType, byte[] content) {
+      this.originalFilename = originalFilename; this.contentType = contentType; this.content = content;
+    }
+    public boolean isEmpty() { return content.length == 0; }
+    public String getOriginalFilename() { return originalFilename; }
+    public String getContentType() { return contentType; }
+    public long getSize() { return content.length; }
+    public InputStream getInputStream() { return new java.io.ByteArrayInputStream(content); }
+  }
 }
