@@ -7,7 +7,7 @@ const emit = defineEmits();
 const viewport = ref(null), pageUrls = ref([]), loadingPages = ref(new Set()), renderedPages = ref(new Set()), pageErrors = ref(new Set()), loadError = ref('');
 let drag = null;
 let loadGeneration = 0;
-function release() { loadGeneration++; pageUrls.value.forEach(url => url && URL.revokeObjectURL(url)); pageUrls.value = []; loadingPages.value = new Set(); renderedPages.value = new Set(); pageErrors.value = new Set(); }
+function release() { loadGeneration++; pageUrls.value.forEach(url => url?.startsWith('blob:') && URL.revokeObjectURL(url)); pageUrls.value = []; loadingPages.value = new Set(); renderedPages.value = new Set(); pageErrors.value = new Set(); }
 async function loadPage(page, generation) {
     if (pageUrls.value[page - 1] || loadingPages.value.has(page))
         return;
@@ -15,9 +15,11 @@ async function loadPage(page, generation) {
     loading.add(page);
     loadingPages.value = loading;
     try {
-        const url = URL.createObjectURL(await api.pageBlob(props.paper.id, page));
+        const location = await api.pageLocation(props.paper.id, page);
+        const url = location.url || URL.createObjectURL(await api.pageBlob(props.paper.id, page));
         if (generation !== loadGeneration) {
-            URL.revokeObjectURL(url);
+            if (url.startsWith('blob:'))
+                URL.revokeObjectURL(url);
             return;
         }
         const urls = [...pageUrls.value];

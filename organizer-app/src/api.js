@@ -35,6 +35,7 @@ export const api = {
     reprocessStatus: (id, jobId) => request(`/questions/${encodeURIComponent(id)}/reprocess/${encodeURIComponent(jobId)}`),
     sets: () => request('/organizer/question-sets'), createSet: (data) => request('/organizer/question-sets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }), updateSet: (id, data) => request(`/organizer/question-sets/${encodeURIComponent(id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }), publishSet: (id) => request(`/organizer/question-sets/${encodeURIComponent(id)}/publish`, { method: 'POST' }), unpublishSet: (id) => request(`/organizer/question-sets/${encodeURIComponent(id)}/unpublish`, { method: 'POST' }), deleteSet: (id) => request(`/organizer/question-sets/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     pageBlob: (paperId, pageNumber) => authenticatedBlob(`/papers/${encodeURIComponent(paperId)}/pages/${pageNumber}`),
+    pageLocation: (paperId, pageNumber) => request(`/papers/${encodeURIComponent(paperId)}/pages/${pageNumber}/location`),
     assetBlob: (path) => authenticatedBlob(path),
     cropUrl: (path) => base.replace(/\/api$/, '') + path
 };

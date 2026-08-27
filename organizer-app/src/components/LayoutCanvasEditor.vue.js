@@ -5,10 +5,13 @@ import MathPreview from './MathPreview.vue';
 const props = defineProps();
 const emit = defineEmits();
 const zoom = ref(0.85);
-function defaults() { const blocks = [{ id: 'stem', kind: 'stem', x: 4, y: 4, width: 92, height: 18 }, { id: 'options', kind: 'options', x: 4, y: 24, width: 92, height: 14 }]; (props.question.figureUrls || []).forEach((_, index) => blocks.push({ id: `figure-${index}`, kind: 'figure', figureIndex: index, x: 5 + (index % 3) * 31, y: 42 + Math.floor(index / 3) * 34, width: 28, height: 30 })); return { width: 100, height: 620, blocks }; }
+function defaults() { const blocks = [{ id: 'stem', kind: 'stem', x: 4, y: 4, width: 92, height: 18 }, { id: 'options', kind: 'options', x: 4, y: 24, width: 92, height: 14 }]; (props.question.figureUrls || []).forEach((_, index) => blocks.push({ id: `figure-${index}`, kind: 'figure', figureIndex: index, x: 5 + (index % 3) * 31, y: 42 + Math.floor(index / 3) * 34, width: 28, height: 30 })); return { width: 1000, height: 620, blocks }; }
 const layout = ref(props.question.presentationLayout?.blocks?.length ? JSON.parse(JSON.stringify(props.question.presentationLayout)) : defaults());
+if ((layout.value.width || 0) < 320)
+    layout.value.width = 1000;
 const blocks = computed(() => layout.value.blocks || []);
 let active = null;
+let canvasActive = null;
 function begin(event, block, mode) { event.preventDefault(); event.stopPropagation(); const canvas = event.currentTarget.closest('.free-layout-canvas'); if (!canvas)
     return; active = { id: block.id, mode, x: event.clientX, y: event.clientY, start: { ...block }, bounds: canvas.getBoundingClientRect() }; window.addEventListener('pointermove', move); window.addEventListener('pointerup', end, { once: true }); }
 function move(event) { if (!active)
@@ -16,17 +19,22 @@ function move(event) { if (!active)
         return block; const start = active.start; if (active.mode === 'move')
         return { ...block, x: clamp(start.x + dx, 0, 100 - start.width), y: clamp(start.y + dy, 0, 100 - (start.height || 10)) }; return { ...block, width: clamp(start.width + dx, 8, 100 - start.x), height: clamp((start.height || 15) + dy, 6, 100 - start.y) }; }) }; }
 function end() { active = null; window.removeEventListener('pointermove', move); }
+function beginCanvasResize(event, mode) { event.preventDefault(); event.stopPropagation(); canvasActive = { mode, x: event.clientX, y: event.clientY, width: layout.value.width || 1000, height: layout.value.height || 620 }; window.addEventListener('pointermove', resizeCanvas); window.addEventListener('pointerup', endCanvasResize, { once: true }); }
+function resizeCanvas(event) { if (!canvasActive)
+    return; const width = canvasActive.mode === 'height' ? canvasActive.width : canvasActive.width + (event.clientX - canvasActive.x) / zoom.value, height = canvasActive.mode === 'width' ? canvasActive.height : canvasActive.height + (event.clientY - canvasActive.y) / zoom.value; changeCanvasSize(width, height); }
+function endCanvasResize() { canvasActive = null; window.removeEventListener('pointermove', resizeCanvas); }
+function changeCanvasSize(requestedWidth, requestedHeight) {
+    const previousWidth = layout.value.width || 1000, previousHeight = layout.value.height || 620;
+    const contentRight = Math.max(0, ...blocks.value.map(block => (block.x + block.width) * previousWidth / 100)), contentBottom = Math.max(0, ...blocks.value.map(block => (block.y + (block.height || 15)) * previousHeight / 100));
+    const nextWidth = Math.max(520, Math.min(1600, Math.round(Math.max(requestedWidth, contentRight + 24)))), nextHeight = Math.max(320, Math.min(1600, Math.round(Math.max(requestedHeight, contentBottom + 24))));
+    if (nextWidth === previousWidth && nextHeight === previousHeight)
+        return;
+    const xRatio = previousWidth / nextWidth, yRatio = previousHeight / nextHeight;
+    layout.value = { ...layout.value, width: nextWidth, height: nextHeight, blocks: blocks.value.map(block => ({ ...block, x: block.x * xRatio, y: block.y * yRatio, width: block.width * xRatio, height: (block.height || 15) * yRatio })) };
+}
 function remove(id) { layout.value = { ...layout.value, blocks: blocks.value.filter(block => block.id !== id) }; }
 function reset() { layout.value = defaults(); zoom.value = .85; }
-function changeHeight(value) {
-    const previous = layout.value.height || 620;
-    const contentBottom = Math.max(0, ...blocks.value.map(block => (block.y + (block.height || 15)) * previous / 100));
-    const next = Math.max(320, Math.min(1600, Math.round(Math.max(value || previous, contentBottom + 24))));
-    if (next === previous)
-        return;
-    const ratio = previous / next;
-    layout.value = { ...layout.value, height: next, blocks: blocks.value.map(block => ({ ...block, y: block.y * ratio, height: (block.height || 15) * ratio })) };
-}
+function changeHeight(value) { changeCanvasSize(layout.value.width || 1000, value || layout.value.height || 620); }
 function inputHeight(event) { changeHeight(Number(event.target.value)); }
 function clamp(value, min, max) { return Math.round(Math.max(min, Math.min(max, value)) * 10) / 10; }
 const __VLS_ctx = {
@@ -64,6 +72,9 @@ let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['layout-editor-dialog']} */ ;
 /** @type {__VLS_StyleScopedClasses['layout-editor-dialog']} */ ;
 /** @type {__VLS_StyleScopedClasses['layout-editor-dialog']} */ ;
+/** @type {__VLS_StyleScopedClasses['canvas-resizer']} */ ;
+/** @type {__VLS_StyleScopedClasses['canvas-resizer']} */ ;
+/** @type {__VLS_StyleScopedClasses['canvas-resizer']} */ ;
 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
     ...{ class: "layout-editor-layer" },
 });
@@ -181,12 +192,12 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
 /** @type {__VLS_StyleScopedClasses['canvas-scroll']} */ ;
 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
     ...{ class: "canvas-zoom-wrapper" },
-    ...{ style: ({ width: `${1000 * __VLS_ctx.zoom}px`, height: `${(__VLS_ctx.layout.height || 620) * __VLS_ctx.zoom}px` }) },
+    ...{ style: ({ width: `${(__VLS_ctx.layout.width || 1000) * __VLS_ctx.zoom}px`, height: `${(__VLS_ctx.layout.height || 620) * __VLS_ctx.zoom}px` }) },
 });
 /** @type {__VLS_StyleScopedClasses['canvas-zoom-wrapper']} */ ;
 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
     ...{ class: "free-layout-canvas" },
-    ...{ style: ({ width: '1000px', height: `${__VLS_ctx.layout.height || 620}px`, transform: `scale(${__VLS_ctx.zoom})` }) },
+    ...{ style: ({ width: `${__VLS_ctx.layout.width || 1000}px`, height: `${__VLS_ctx.layout.height || 620}px`, transform: `scale(${__VLS_ctx.zoom})` }) },
 });
 /** @type {__VLS_StyleScopedClasses['free-layout-canvas']} */ ;
 for (const [block] of __VLS_vFor((__VLS_ctx.blocks))) {
@@ -194,7 +205,7 @@ for (const [block] of __VLS_vFor((__VLS_ctx.blocks))) {
         ...{ onPointerdown: (...[$event]) => {
                 return (__VLS_ctx.begin($event, block, 'move'));
                 // @ts-ignore
-                [layout, layout, zoom, zoom, zoom, blocks, begin,];
+                [layout, layout, layout, layout, zoom, zoom, zoom, blocks, begin,];
             } },
         key: (block.id),
         ...{ class: "free-layout-block" },
@@ -280,6 +291,39 @@ for (const [block] of __VLS_vFor((__VLS_ctx.blocks))) {
     // @ts-ignore
     [];
 }
+__VLS_asFunctionalElement1(__VLS_intrinsics.i, __VLS_intrinsics.i)({
+    ...{ onPointerdown: (...[$event]) => {
+            return (__VLS_ctx.beginCanvasResize($event, 'width'));
+            // @ts-ignore
+            [beginCanvasResize,];
+        } },
+    ...{ class: "canvas-resizer width" },
+    title: "拖动调整画板宽度",
+});
+/** @type {__VLS_StyleScopedClasses['canvas-resizer']} */ ;
+/** @type {__VLS_StyleScopedClasses['width']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.i, __VLS_intrinsics.i)({
+    ...{ onPointerdown: (...[$event]) => {
+            return (__VLS_ctx.beginCanvasResize($event, 'height'));
+            // @ts-ignore
+            [beginCanvasResize,];
+        } },
+    ...{ class: "canvas-resizer height" },
+    title: "拖动调整画板高度",
+});
+/** @type {__VLS_StyleScopedClasses['canvas-resizer']} */ ;
+/** @type {__VLS_StyleScopedClasses['height']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.i, __VLS_intrinsics.i)({
+    ...{ onPointerdown: (...[$event]) => {
+            return (__VLS_ctx.beginCanvasResize($event, 'both'));
+            // @ts-ignore
+            [beginCanvasResize,];
+        } },
+    ...{ class: "canvas-resizer both" },
+    title: "拖动调整画板宽高",
+});
+/** @type {__VLS_StyleScopedClasses['canvas-resizer']} */ ;
+/** @type {__VLS_StyleScopedClasses['both']} */ ;
 __VLS_asFunctionalElement1(__VLS_intrinsics.footer, __VLS_intrinsics.footer)({});
 __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
     ...{ onClick: (__VLS_ctx.reset) },

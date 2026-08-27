@@ -56,6 +56,8 @@ public class PaperProcessingService {
   private final PageImagePreprocessor imagePreprocessor;
   private final RecognitionReportService recognitionReports;
   private final KnowledgePointClassifierService knowledgePointClassifier;
+  private final com.whiteboard.server.teaching.PaperCloudMigrationService cloudMigration;
+  private final com.whiteboard.server.teaching.QiniuPaperStorageService cloudStorage;
   private final TransactionTemplate transactions;
   private final ExecutorService processingExecutor = Executors.newFixedThreadPool(MAX_CONCURRENT_JOBS);
   private final AtomicInteger activeJobs = new AtomicInteger(0);
@@ -68,6 +70,8 @@ public class PaperProcessingService {
       PageImagePreprocessor imagePreprocessor,
       RecognitionReportService recognitionReports,
       KnowledgePointClassifierService knowledgePointClassifier,
+      com.whiteboard.server.teaching.PaperCloudMigrationService cloudMigration,
+      com.whiteboard.server.teaching.QiniuPaperStorageService cloudStorage,
       org.springframework.transaction.PlatformTransactionManager transactionManager) {
     this.jdbc = jdbc; this.json = json; this.ocrProviders = ocrProviders; this.deepseek = deepseek; this.normalizer = normalizer;
     this.layoutClient = layoutClient;
@@ -77,6 +81,8 @@ public class PaperProcessingService {
     this.imagePreprocessor = imagePreprocessor;
     this.recognitionReports = recognitionReports;
     this.knowledgePointClassifier = knowledgePointClassifier;
+    this.cloudMigration = cloudMigration;
+    this.cloudStorage = cloudStorage;
     this.transactions = new TransactionTemplate(transactionManager);
   }
 
@@ -234,6 +240,7 @@ public class PaperProcessingService {
       int count = structured.path("questions").size();
       jdbc.update("UPDATE teaching_parse_job SET status='review',stage='review_required',progress=100,result_object_key=?,locked_at=NULL,finished_at=?,updated_at=? WHERE id=?", structuredPath.toString(), now(), now(), jobId);
       jdbc.update("UPDATE teaching_paper SET status='review',progress=100,question_count=?,updated_at=? WHERE id=?", count, now(), paperId);
+      cloudMigration.queue(paperId);
       log.info("Paper processing completed: jobId={}, paperId={}, questionCount={}", jobId, paperId, count);
     }
   }
@@ -582,7 +589,7 @@ public class PaperProcessingService {
   private List<Path> sourceFiles(String paperId) throws Exception {
     String manifestValue = jdbc.queryForObject("SELECT pdf_object_key FROM teaching_paper WHERE id=?", String.class, paperId);
     Path manifest = Paths.get(manifestValue); JsonNode sources = json.readTree(manifest.toFile()); List<Path> files = new ArrayList<>();
-    if (sources.isArray()) for (JsonNode source : sources) { Path file = manifest.getParent().resolve(source.path("name").asText()).normalize(); if (!file.startsWith(manifest.getParent()) || !Files.isRegularFile(file)) throw new ProviderException("SOURCE_FILES_MISSING", "试卷源文件不存在"); files.add(file); }
+    if (sources.isArray()) for (JsonNode source : sources) { Path file = manifest.getParent().resolve(source.path("name").asText()).normalize(); if (file.startsWith(manifest.getParent()) && !Files.isRegularFile(file) && "original.pdf".equals(source.path("name").asText())) cloudStorage.restoreOriginal(paperId,file); if (!file.startsWith(manifest.getParent()) || !Files.isRegularFile(file)) throw new ProviderException("SOURCE_FILES_MISSING", "试卷源文件不存在"); files.add(file); }
     return files;
   }
   private List<Path> normalizedPageFiles(String paperId) {

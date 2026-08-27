@@ -135,13 +135,21 @@ public class TeachingPlatformController {
       .body(service.getQuestionFigure(questionId, assetIndex, userId));
   }
 
-  @GetMapping(value = "/papers/{paperId}/pages/{pageNumber}", produces = MediaType.IMAGE_PNG_VALUE)
-  public ResponseEntity<Resource> getPaperPage(
+  @GetMapping(value = "/papers/{paperId}/pages/{pageNumber}", produces = MediaType.IMAGE_JPEG_VALUE)
+  public ResponseEntity<?> getPaperPage(
       @PathVariable String paperId,
       @PathVariable int pageNumber,
       @RequestHeader("X-User-Id") String userId) {
-    return ResponseEntity.ok().cacheControl(CacheControl.noCache()).contentType(MediaType.IMAGE_PNG)
-      .body(service.getPaperPage(paperId, pageNumber, userId));
+    String cloudUrl = service.getPaperPageCloudUrl(paperId, pageNumber, userId);
+    if (cloudUrl != null) return ResponseEntity.status(HttpStatus.FOUND).location(java.net.URI.create(cloudUrl)).build();
+    return ResponseEntity.ok().cacheControl(CacheControl.maxAge(java.time.Duration.ofDays(7)).cachePrivate()).contentType(MediaType.IMAGE_JPEG).body(service.getPaperPage(paperId, pageNumber, userId));
+  }
+
+  @GetMapping("/papers/{paperId}/pages/{pageNumber}/location")
+  public java.util.Map<String, Object> getPaperPageLocation(@PathVariable String paperId, @PathVariable int pageNumber,
+      @RequestHeader("X-User-Id") String userId) {
+    String url = service.getPaperPageCloudUrl(paperId, pageNumber, userId);
+    return java.util.Collections.<String, Object>singletonMap("url", url == null ? "" : url);
   }
 
   @GetMapping("/teaching-assets")

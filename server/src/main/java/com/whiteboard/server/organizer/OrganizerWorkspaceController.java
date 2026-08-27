@@ -15,10 +15,12 @@ import org.springframework.web.multipart.MultipartFile;
 public class OrganizerWorkspaceController {
   private final OrganizerWorkspaceService organizer;
   private final TeachingPlatformService teaching;
+  private final com.whiteboard.server.teaching.PaperCloudMigrationService cloudMigration;
 
-  public OrganizerWorkspaceController(OrganizerWorkspaceService organizer, TeachingPlatformService teaching) {
+  public OrganizerWorkspaceController(OrganizerWorkspaceService organizer, TeachingPlatformService teaching, com.whiteboard.server.teaching.PaperCloudMigrationService cloudMigration) {
     this.organizer = organizer;
     this.teaching = teaching;
+    this.cloudMigration = cloudMigration;
   }
 
   @GetMapping("/dashboard")
@@ -45,6 +47,13 @@ public class OrganizerWorkspaceController {
     organizer.attachPaper(String.valueOf(paper.get("id")), userId);
     return paper;
   }
+
+  @PostMapping("/papers/cloud-migration")
+  @ResponseStatus(HttpStatus.ACCEPTED)
+  public Map<String, Object> migratePaperHistory() { return cloudMigration.migrateHistory(); }
+
+  @GetMapping("/papers/cloud-migration")
+  public Map<String, Object> paperMigrationStatus() { return cloudMigration.status(); }
 
   @DeleteMapping("/papers/{paperId}")
   @ResponseStatus(HttpStatus.NO_CONTENT)

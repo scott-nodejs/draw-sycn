@@ -25,6 +25,7 @@ export const api={
  reprocessStatus:(id:string,jobId:string)=>request<{status:string;stage:string;errorMessage?:string}>(`/questions/${encodeURIComponent(id)}/reprocess/${encodeURIComponent(jobId)}`),
  sets:()=>request<QuestionSet[]>('/organizer/question-sets'),createSet:(data:any)=>request<QuestionSet>('/organizer/question-sets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}),updateSet:(id:string,data:any)=>request<QuestionSet>(`/organizer/question-sets/${encodeURIComponent(id)}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}),publishSet:(id:string)=>request<QuestionSet>(`/organizer/question-sets/${encodeURIComponent(id)}/publish`,{method:'POST'}),unpublishSet:(id:string)=>request<QuestionSet>(`/organizer/question-sets/${encodeURIComponent(id)}/unpublish`,{method:'POST'}),deleteSet:(id:string)=>request<void>(`/organizer/question-sets/${encodeURIComponent(id)}`,{method:'DELETE'}),
  pageBlob:(paperId:string,pageNumber:number)=>authenticatedBlob(`/papers/${encodeURIComponent(paperId)}/pages/${pageNumber}`),
+ pageLocation:(paperId:string,pageNumber:number)=>request<{url:string}>(`/papers/${encodeURIComponent(paperId)}/pages/${pageNumber}/location`),
  assetBlob:(path:string)=>authenticatedBlob(path),
  cropUrl:(path:string)=>base.replace(/\/api$/,'')+path
 }

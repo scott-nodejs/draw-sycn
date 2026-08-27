@@ -12,13 +12,14 @@ const viewport=ref<HTMLElement|null>(null),pageUrls=ref<(string|null)[]>([]),loa
 let drag:null|{index:number;x:number;y:number;mode:DragMode;region:Region;box:DOMRect;grabX:number;grabY:number}=null
 let loadGeneration=0
 
-function release(){loadGeneration++;pageUrls.value.forEach(url=>url&&URL.revokeObjectURL(url));pageUrls.value=[];loadingPages.value=new Set();renderedPages.value=new Set();pageErrors.value=new Set()}
+function release(){loadGeneration++;pageUrls.value.forEach(url=>url?.startsWith('blob:')&&URL.revokeObjectURL(url));pageUrls.value=[];loadingPages.value=new Set();renderedPages.value=new Set();pageErrors.value=new Set()}
 async function loadPage(page:number,generation:number){
  if(pageUrls.value[page-1]||loadingPages.value.has(page))return
  const loading=new Set(loadingPages.value);loading.add(page);loadingPages.value=loading
  try{
-  const url=URL.createObjectURL(await api.pageBlob(props.paper.id,page))
-  if(generation!==loadGeneration){URL.revokeObjectURL(url);return}
+  const location=await api.pageLocation(props.paper.id,page)
+  const url=location.url||URL.createObjectURL(await api.pageBlob(props.paper.id,page))
+  if(generation!==loadGeneration){if(url.startsWith('blob:'))URL.revokeObjectURL(url);return}
   const urls=[...pageUrls.value];urls[page-1]=url;pageUrls.value=urls
   const errors=new Set(pageErrors.value);errors.delete(page);pageErrors.value=errors;loadError.value=''
  }catch(error){

@@ -49,12 +49,16 @@ public class TeachingPlatformService {
   private final ObjectMapper objectMapper;
   private final WhiteboardProperties properties;
   private final QuestionReprocessingService questionReprocessing;
+  private final PaperPagePreviewService pagePreviews;
+  private final QiniuPaperStorageService cloudStorage;
 
-  public TeachingPlatformService(JdbcTemplate jdbc, ObjectMapper objectMapper, WhiteboardProperties properties, QuestionReprocessingService questionReprocessing) {
+  public TeachingPlatformService(JdbcTemplate jdbc, ObjectMapper objectMapper, WhiteboardProperties properties, QuestionReprocessingService questionReprocessing, PaperPagePreviewService pagePreviews, QiniuPaperStorageService cloudStorage) {
     this.jdbc = jdbc;
     this.objectMapper = objectMapper;
     this.properties = properties;
     this.questionReprocessing = questionReprocessing;
+    this.pagePreviews = pagePreviews;
+    this.cloudStorage = cloudStorage;
   }
 
   public List<Map<String, Object>> listPapers(String organizationId, String userId) {
@@ -454,7 +458,10 @@ public class TeachingPlatformService {
     for (Path root : roots) {
       Path page = root.resolve("papers").resolve(paperId).resolve("pages")
         .resolve(String.format("page-%04d.png", pageNumber)).normalize();
-      if (page.startsWith(root) && Files.isRegularFile(page)) return new PathResource(page);
+      if (page.startsWith(root) && Files.isRegularFile(page)) {
+        try { return new PathResource(pagePreviews.preview(page)); }
+        catch (Exception error) { throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "试卷页面预览生成失败", error); }
+      }
     }
     throw notFound("试卷页面文件不存在");
   }
@@ -799,6 +806,11 @@ public class TeachingPlatformService {
     String getContentType();
     long getSize();
     InputStream getInputStream() throws IOException;
+  }
+
+  public String getPaperPageCloudUrl(String paperId, int pageNumber, String userId) {
+    assertPaperOwner(paperId, userId);
+    return cloudStorage.pageUrl(paperId, pageNumber);
   }
 
   private static class MultipartSourceFile implements DocumentSourceFile {
