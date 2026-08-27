@@ -71,6 +71,9 @@ public class PaddleOcrProvider implements OcrProvider {
       try { response = submitMultipart(source, json.writeValueAsString(options)); }
       catch (ProviderException error) { throw error; }
       catch (Exception error) { throw new ProviderException("PADDLEOCR_SUBMIT_FAILED", "PaddleOCR submit failed: " + error.getClass().getSimpleName()); }
+      int businessCode=response.path("code").asInt(0);String businessMessage=response.path("msg").asText(response.path("message").asText());
+      if(businessCode==10010)throw new ProviderException("PADDLEOCR_QUEUE_FULL","PaddleOCR 提交队列已满，系统稍后自动重试");
+      if(businessCode!=0&&!response.path("data").hasNonNull("jobId"))throw new ProviderException("PADDLEOCR_SUBMIT_REJECTED",businessMessage.isEmpty()?"PaddleOCR 拒绝了任务提交":businessMessage);
       String jobId = response.path("data").path("jobId").asText(); if (jobId.isEmpty()) throw new ProviderException("PADDLEOCR_INVALID_RESPONSE", "PaddleOCR 未返回 jobId"); jobIds.add(jobId);
     } } finally { if (merged != null) Files.deleteIfExists(merged); }
     return String.join(",", jobIds);
@@ -125,7 +128,9 @@ public class PaddleOcrProvider implements OcrProvider {
       for (String line : jsonl.split("\\R")) {
         if (line.trim().isEmpty()) continue; JsonNode root = json.readTree(line).path("result");
         for (JsonNode parsedPage : root.path("layoutParsingResults")) {
-          JsonNode md = parsedPage.path("markdown"); markdown.append(md.path("text").asText()).append("\n\n");
+          JsonNode md = parsedPage.path("markdown"); String pageMarkdown = md.path("text").asText();
+          if (pageMarkdown.trim().isEmpty()) pageMarkdown = fallbackPageText(parsedPage);
+          markdown.append(pageMarkdown).append("\n\n");
           Map<String, Path> pageImages = new LinkedHashMap<>();
           JsonNode images = md.path("images"); if (images.isObject()) {
             java.util.Iterator<Map.Entry<String, JsonNode>> fields = images.fields();
@@ -160,6 +165,18 @@ public class PaddleOcrProvider implements OcrProvider {
         if (stored != null) block.put("localImagePath", stored.toString());
       }
     }
+  }
+
+  private String fallbackPageText(JsonNode page) {
+    JsonNode blocks = page.path("prunedResult").path("parsing_res_list");
+    if (!blocks.isArray()) blocks = page.path("parsing_res_list");
+    if (!blocks.isArray()) blocks = page.path("layoutParsingResults");
+    StringBuilder text = new StringBuilder();
+    if (blocks.isArray()) for (JsonNode block : blocks) {
+      String value = block.path("block_content").asText(block.path("text").asText());
+      if (!value.trim().isEmpty()) text.append(value.trim()).append('\n');
+    }
+    return text.toString();
   }
 
   private HttpHeaders headers() { HttpHeaders headers = new HttpHeaders(); headers.set(HttpHeaders.AUTHORIZATION, "bearer " + token.trim()); headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON)); return headers; }

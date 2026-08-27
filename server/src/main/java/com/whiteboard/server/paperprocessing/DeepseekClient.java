@@ -2,10 +2,16 @@ package com.whiteboard.server.paperprocessing;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.HttpEntity;
@@ -16,6 +22,7 @@ import org.springframework.web.client.RestTemplate;
 
 @Component
 public class DeepseekClient {
+  private static final Pattern QUESTION_NUMBER = Pattern.compile("(?m)^\\s*(\\d{1,3})\\s*[.．、)）]");
   private final RestTemplate http; private final ObjectMapper json; private final StructuredOutputRepairer outputRepairer; private final String apiKey; private final String baseUrl; private final String model;
   public DeepseekClient(RestTemplateBuilder builder, ObjectMapper json, StructuredOutputRepairer outputRepairer,
       @Value("${DEEPSEEK_API_KEY:}") String apiKey,
@@ -29,15 +36,51 @@ public class DeepseekClient {
     if (apiKey.trim().isEmpty()) throw new ProviderException("DEEPSEEK_NOT_CONFIGURED", "未配置 DEEPSEEK_API_KEY");
     String system = "你是商业教学平台的试题语义结构化引擎。根据 OCR Markdown 与版面块识别题号、题型和题目内容，禁止补造原文不存在的信息。必须输出 JSON：{\"questions\":[{\"number\":1,\"type\":\"选择题\",\"stem\":\"\",\"options\":[],\"answer\":\"\",\"analysis\":\"\",\"points\":0,\"confidence\":90,\"difficulty\":\"中\",\"warnings\":[]}]}。不需要生成页面坐标或裁切区域，这些信息由后端版面算法生成。题型只能是选择题、填空题、解答题；difficulty 只能是高、中、低，请结合年级、学科、知识点综合程度、推理步骤和计算量评估。无法确定的答案或解析留空。stem、options、answer、analysis 不要使用 ** 加粗包裹；数学公式保留 $...$ LaTeX，LaTeX 命令使用标准单个反斜杠，禁止二次转义。";
     String user = "年级：" + grade + "\n学科：" + subject + "\nOCR Markdown：\n" + markdown + "\n版面块（pageNumber/bbox/text）：\n" + json.writeValueAsString(layoutBlocks);
+    ObjectNode result = (ObjectNode) requestJson(system, user, 8192);
+    validate(result);
+    supplementMissingQuestions(result, markdown, subject, grade);
+    return result;
+  }
+
+  private void supplementMissingQuestions(ObjectNode result, String markdown, String subject, String grade) throws Exception {
+    Set<Integer> expected = detectedQuestionNumbers(markdown);
+    Set<Integer> actual = questionNumbers(result.path("questions"));
+    expected.removeAll(actual);
+    if (expected.isEmpty()) return;
+    List<Integer> missing = new ArrayList<>(expected); java.util.Collections.sort(missing);
+    for (int offset = 0; offset < missing.size(); offset += 12) {
+      List<Integer> batch = missing.subList(offset, Math.min(offset + 12, missing.size()));
+      String system = "你是试卷缺题修复引擎。只提取指定题号，禁止返回其他题，禁止补造。输出格式必须是 {\"questions\":[{\"number\":1,\"type\":\"选择题\",\"stem\":\"\",\"options\":[],\"answer\":\"\",\"analysis\":\"\",\"points\":0,\"confidence\":80,\"difficulty\":\"中\",\"warnings\":[]}]}。题型只能是选择题、填空题、解答题。";
+      String user = "年级：" + grade + "\n学科：" + subject + "\n必须补齐的题号：" + batch + "\nOCR Markdown：\n" + markdown;
+      JsonNode supplement = requestJson(system, user, 8192);
+      validate(supplement);
+      for (JsonNode question : supplement.path("questions")) if (batch.contains(question.path("number").asInt()) && actual.add(question.path("number").asInt())) ((ArrayNode) result.path("questions")).add(question.deepCopy());
+    }
+    Set<Integer> unresolved = detectedQuestionNumbers(markdown); unresolved.removeAll(questionNumbers(result.path("questions")));
+    if (!unresolved.isEmpty()) throw new ProviderException("QUESTION_COUNT_MISMATCH", "结构化结果缺少 OCR 中已识别的题号：" + unresolved);
+  }
+
+  private JsonNode requestJson(String system, String user, int maxTokens) throws Exception {
     List<Map<String, String>> messages = new ArrayList<>(); messages.add(message("system", system)); messages.add(message("user", user));
-    Map<String, Object> body = new LinkedHashMap<>(); body.put("model", model); body.put("messages", messages); body.put("response_format", java.util.Collections.singletonMap("type", "json_object")); body.put("max_tokens", 8192); body.put("stream", false);
+    Map<String, Object> body = new LinkedHashMap<>(); body.put("model", model); body.put("messages", messages); body.put("response_format", java.util.Collections.singletonMap("type", "json_object")); body.put("max_tokens", maxTokens); body.put("stream", false);
     HttpHeaders headers = new HttpHeaders(); headers.setBearerAuth(apiKey); headers.setContentType(MediaType.APPLICATION_JSON);
     String raw = http.postForObject(baseUrl + "/chat/completions", new HttpEntity<Map<String, Object>>(body, headers), String.class);
     JsonNode response = json.readTree(raw); String content = response.path("choices").path(0).path("message").path("content").asText();
     if (content.trim().isEmpty()) throw new ProviderException("DEEPSEEK_EMPTY_OUTPUT", "DeepSeek 返回了空内容");
-    JsonNode result = outputRepairer.parse(content);
-    validate(result);
-    return result;
+    return outputRepairer.parse(content);
+  }
+
+  private Set<Integer> detectedQuestionNumbers(String markdown) {
+    Set<Integer> candidates = new HashSet<>(); Matcher matcher = QUESTION_NUMBER.matcher(markdown);
+    while (matcher.find()) { int number = Integer.parseInt(matcher.group(1)); if (number > 0 && number <= 100) candidates.add(number); }
+    if (candidates.size() < 3) return new HashSet<>();
+    Set<Integer> numbers = new HashSet<>();
+    for (Integer number : candidates) if (candidates.contains(number - 1) || candidates.contains(number + 1)) numbers.add(number);
+    return numbers;
+  }
+
+  private Set<Integer> questionNumbers(JsonNode questions) {
+    Set<Integer> numbers = new HashSet<>(); if (questions.isArray()) for (JsonNode question : questions) numbers.add(question.path("number").asInt()); return numbers;
   }
 
   public JsonNode recognizeQuestionCrop(String markdown, int number, String type) throws Exception {

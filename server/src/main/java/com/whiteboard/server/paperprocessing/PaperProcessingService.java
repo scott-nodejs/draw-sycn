@@ -122,7 +122,7 @@ public class PaperProcessingService {
   public void tick() {
     int capacity = MAX_CONCURRENT_JOBS - activeJobs.get();
     if (capacity <= 0) return;
-    List<Map<String, Object>> jobs = jdbc.query("SELECT j.id,j.paper_id,j.status,j.stage,j.provider,j.request_id,j.retry_count FROM teaching_parse_job j JOIN teaching_paper p ON p.id=j.paper_id WHERE p.deleted_at IS NULL AND j.status IN ('queued','processing') AND (j.next_retry_at IS NULL OR j.next_retry_at<=?) AND (j.locked_at IS NULL OR j.locked_at<?) ORDER BY j.created_at LIMIT ?",
+    List<Map<String, Object>> jobs = jdbc.query("SELECT j.id,j.paper_id,j.status,j.stage,j.provider,j.request_id,j.retry_count FROM teaching_parse_job j JOIN teaching_paper p ON p.id=j.paper_id WHERE p.deleted_at IS NULL AND j.id=(SELECT latest.id FROM teaching_parse_job latest WHERE latest.paper_id=j.paper_id ORDER BY latest.created_at DESC,latest.id DESC LIMIT 1) AND j.status IN ('queued','processing') AND (j.next_retry_at IS NULL OR j.next_retry_at<=?) AND (j.locked_at IS NULL OR j.locked_at<?) ORDER BY j.created_at LIMIT ?",
       (rs, n) -> { Map<String, Object> row = new LinkedHashMap<>(); row.put("id", rs.getString("id")); row.put("paperId", rs.getString("paper_id")); row.put("stage", rs.getString("stage")); row.put("provider", rs.getString("provider")); row.put("requestId", rs.getString("request_id")); row.put("retryCount", rs.getInt("retry_count")); return row; },
       Timestamp.valueOf(LocalDateTime.now()), Timestamp.valueOf(LocalDateTime.now().minusMinutes(10)), capacity);
     if (jobs.isEmpty()) return;
@@ -554,6 +554,7 @@ public class PaperProcessingService {
 
   public Map<String, Object> retry(String paperId, String userId) {
     assertOwner(paperId, userId);
+    jdbc.update("UPDATE teaching_parse_job SET status='cancelled',stage='cancelled',locked_at=NULL,finished_at=?,updated_at=? WHERE paper_id=? AND status IN ('queued','processing') AND id<>(SELECT id FROM (SELECT id FROM teaching_parse_job WHERE paper_id=? ORDER BY created_at DESC,id DESC LIMIT 1) latest)", now(), now(), paperId, paperId);
     int changed = jdbc.update("UPDATE teaching_parse_job SET provider='',status='queued',stage='queued',progress=0,request_id='',error_code='',error_message='',retry_count=0,result_object_key='',next_retry_at=NULL,locked_at=NULL,finished_at=NULL,updated_at=? WHERE id=(SELECT id FROM (SELECT id FROM teaching_parse_job WHERE paper_id=? ORDER BY created_at DESC LIMIT 1) latest)", now(), paperId);
     if (changed == 0) throw new ResponseStatusException(HttpStatus.CONFLICT, "找不到可重新解析的任务");
     jdbc.update("UPDATE teaching_paper SET status='processing',progress=0,updated_at=? WHERE id=?", now(), paperId);
@@ -566,12 +567,13 @@ public class PaperProcessingService {
     String code = cause instanceof ProviderException ? ((ProviderException) cause).getCode() : "PROCESSING_ERROR";
     String message = cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage();
     stageExecutions.failRunning(string(job.get("id")), code, message);
-    boolean terminal = retry >= 3 || code.endsWith("NOT_CONFIGURED") || "PAPER_ALREADY_REVIEWED".equals(code);
+    int maxRetries = "PADDLEOCR_QUEUE_FULL".equals(code) ? 10 : 3;
+    boolean terminal = retry >= maxRetries || code.endsWith("NOT_CONFIGURED") || "PAPER_ALREADY_REVIEWED".equals(code);
     log.warn("Paper job state updated after failure: jobId={}, paperId={}, code={}, retryCount={}, terminal={}, message={}",
       job.get("id"), job.get("paperId"), code, retry, terminal, message);
     jdbc.update("UPDATE teaching_parse_job SET status=?,retry_count=?,error_code=?,error_message=?,next_retry_at=?,locked_at=NULL,updated_at=? WHERE id=?",
       terminal ? "failed" : "processing", retry, code, message.substring(0, Math.min(1000, message.length())),
-      terminal ? null : Timestamp.valueOf(LocalDateTime.now().plusSeconds(30L * retry)), now(), job.get("id"));
+      terminal ? null : Timestamp.valueOf(LocalDateTime.now().plusSeconds(Math.min(300L, 30L * retry))), now(), job.get("id"));
     if (terminal) jdbc.update("UPDATE teaching_paper SET status='failed',updated_at=? WHERE id=?", now(), job.get("paperId"));
   }
   private void unlock(String jobId, int progress) { jdbc.update("UPDATE teaching_parse_job SET progress=?,locked_at=NULL,updated_at=? WHERE id=?", progress, now(), jobId); }
