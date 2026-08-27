@@ -5,11 +5,12 @@ import AuthenticatedImage from './AuthenticatedImage.vue'
 import MathPreview from './MathPreview.vue'
 
 const props=defineProps<{question:Question}>()
-const blocks=computed(()=>props.question.presentationLayout?.blocks||[])
+const blocks=computed(()=>(props.question.presentationLayout?.blocks||[]).filter(block=>block.kind==='stem'||(block.kind==='options'&&props.question.options?.length)||(block.kind==='figure'&&props.question.figureUrls?.[block.figureIndex||0])))
 const hasLayout=computed(()=>blocks.value.length>0)
-const previewHeight=computed(()=>Math.max(220,Math.min(520,props.question.presentationLayout?.height||360)))
+const contentBottom=computed(()=>Math.min(100,Math.max(20,...blocks.value.map(block=>block.y+(block.height||15)+4))))
+const previewHeight=computed(()=>Math.max(140,Math.min(520,(props.question.presentationLayout?.height||360)*contentBottom.value/100)))
 const images=computed(()=>props.question.figureUrls||[])
-function blockStyle(block:PresentationBlock){return{left:`${block.x}%`,top:`${block.y}%`,width:`${block.width}%`,height:`${block.height||15}%`}}
+function blockStyle(block:PresentationBlock){return{left:`${block.x}%`,top:`${block.y/contentBottom.value*100}%`,width:`${block.width}%`,height:`${(block.height||15)/contentBottom.value*100}%`}}
 </script>
 
 <template>

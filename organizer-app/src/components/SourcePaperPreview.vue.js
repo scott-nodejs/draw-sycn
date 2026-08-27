@@ -4,10 +4,10 @@ import { api } from '../api';
 const handles = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
 const props = defineProps();
 const emit = defineEmits();
-const viewport = ref(null), pageUrls = ref([]), loadingPages = ref(new Set()), pageErrors = ref(new Set()), loadError = ref('');
+const viewport = ref(null), pageUrls = ref([]), loadingPages = ref(new Set()), renderedPages = ref(new Set()), pageErrors = ref(new Set()), loadError = ref('');
 let drag = null;
 let loadGeneration = 0;
-function release() { loadGeneration++; pageUrls.value.forEach(url => url && URL.revokeObjectURL(url)); pageUrls.value = []; loadingPages.value = new Set(); pageErrors.value = new Set(); }
+function release() { loadGeneration++; pageUrls.value.forEach(url => url && URL.revokeObjectURL(url)); pageUrls.value = []; loadingPages.value = new Set(); renderedPages.value = new Set(); pageErrors.value = new Set(); }
 async function loadPage(page, generation) {
     if (pageUrls.value[page - 1] || loadingPages.value.has(page))
         return;
@@ -27,10 +27,6 @@ async function loadPage(page, generation) {
         errors.delete(page);
         pageErrors.value = errors;
         loadError.value = '';
-        if (regionsForPage(page).length) {
-            await nextTick();
-            window.setTimeout(scrollToQuestion, 40);
-        }
     }
     catch (error) {
         if (generation !== loadGeneration)
@@ -49,6 +45,8 @@ async function loadPage(page, generation) {
         }
     }
 }
+function pageRendered(page) { const rendered = new Set(renderedPages.value); rendered.add(page); renderedPages.value = rendered; if (regionsForPage(page).length)
+    nextTick().then(() => window.setTimeout(scrollToQuestion, 40)); }
 async function loadPaper() {
     release();
     loadError.value = '';
@@ -161,7 +159,7 @@ else {
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
             key: (pageIndex),
             ...{ class: "paper-source-page" },
-            ...{ class: ({ 'page-pending': !url }) },
+            ...{ class: ({ 'page-pending': !__VLS_ctx.renderedPages.has(pageIndex + 1) }) },
             'data-page': (pageIndex + 1),
         });
         /** @type {__VLS_StyleScopedClasses['paper-source-page']} */ ;
@@ -173,18 +171,27 @@ else {
         (pageIndex + 1);
         if (url) {
             __VLS_asFunctionalElement1(__VLS_intrinsics.img)({
+                ...{ onLoad: (...[$event]) => {
+                        if (!!(__VLS_ctx.loadError && __VLS_ctx.pageUrls.every(url => !url)))
+                            throw 0;
+                        if (!(url))
+                            throw 0;
+                        return (__VLS_ctx.pageRendered(pageIndex + 1));
+                        // @ts-ignore
+                        [loadError, loadError, pageUrls, pageUrls, renderedPages, pageRendered,];
+                    } },
                 src: (url),
                 alt: (`${__VLS_ctx.paper.title} 第 ${pageIndex + 1} 页`),
-                loading: "lazy",
+                loading: (__VLS_ctx.regionsForPage(pageIndex + 1).length ? 'eager' : 'lazy'),
                 draggable: "false",
             });
         }
-        else {
+        if (!__VLS_ctx.renderedPages.has(pageIndex + 1)) {
             __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
                 ...{ class: "page-loading" },
             });
             /** @type {__VLS_StyleScopedClasses['page-loading']} */ ;
-            if (__VLS_ctx.loadingPages.has(pageIndex + 1)) {
+            if (!__VLS_ctx.pageErrors.has(pageIndex + 1)) {
                 let __VLS_0;
                 /** @ts-ignore @type { | typeof __VLS_components.LoaderCircle} */
                 LoaderCircle;
@@ -204,25 +211,25 @@ else {
                     ...{ onClick: (...[$event]) => {
                             if (!!(__VLS_ctx.loadError && __VLS_ctx.pageUrls.every(url => !url)))
                                 throw 0;
-                            if (!!(url))
+                            if (!(!__VLS_ctx.renderedPages.has(pageIndex + 1)))
                                 throw 0;
                             if (!(__VLS_ctx.pageErrors.has(pageIndex + 1)))
                                 throw 0;
                             return (__VLS_ctx.loadPage(pageIndex + 1, __VLS_ctx.loadGeneration));
                             // @ts-ignore
-                            [loadError, loadError, pageUrls, pageUrls, paper, loadingPages, pageErrors, pageErrors, loadPage, loadGeneration,];
+                            [renderedPages, paper, regionsForPage, pageErrors, pageErrors, pageErrors, loadPage, loadGeneration,];
                         } },
                 });
             }
         }
-        for (const [item] of __VLS_vFor((__VLS_ctx.regionsForPage(pageIndex + 1)))) {
+        for (const [item] of __VLS_vFor((__VLS_ctx.renderedPages.has(pageIndex + 1) ? __VLS_ctx.regionsForPage(pageIndex + 1) : []))) {
             __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
                 ...{ onPointerdown: (...[$event]) => {
                         if (!!(__VLS_ctx.loadError && __VLS_ctx.pageUrls.every(url => !url)))
                             throw 0;
                         return (__VLS_ctx.startAdjust($event, item.index, 'move'));
                         // @ts-ignore
-                        [regionsForPage, startAdjust,];
+                        [renderedPages, regionsForPage, startAdjust,];
                     } },
                 key: (item.index),
                 ...{ class: "paper-question-region" },

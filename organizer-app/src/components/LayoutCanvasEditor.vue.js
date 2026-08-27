@@ -18,6 +18,16 @@ function move(event) { if (!active)
 function end() { active = null; window.removeEventListener('pointermove', move); }
 function remove(id) { layout.value = { ...layout.value, blocks: blocks.value.filter(block => block.id !== id) }; }
 function reset() { layout.value = defaults(); zoom.value = .85; }
+function changeHeight(value) {
+    const previous = layout.value.height || 620;
+    const contentBottom = Math.max(0, ...blocks.value.map(block => (block.y + (block.height || 15)) * previous / 100));
+    const next = Math.max(320, Math.min(1600, Math.round(Math.max(value || previous, contentBottom + 24))));
+    if (next === previous)
+        return;
+    const ratio = previous / next;
+    layout.value = { ...layout.value, height: next, blocks: blocks.value.map(block => ({ ...block, y: block.y * ratio, height: (block.height || 15) * ratio })) };
+}
+function inputHeight(event) { changeHeight(Number(event.target.value)); }
 function clamp(value, min, max) { return Math.round(Math.max(min, Math.min(max, value)) * 10) / 10; }
 const __VLS_ctx = {
     ...{},
@@ -34,7 +44,13 @@ let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['layout-editor-dialog']} */ ;
 /** @type {__VLS_StyleScopedClasses['layout-editor-dialog']} */ ;
 /** @type {__VLS_StyleScopedClasses['layout-editor-dialog']} */ ;
+/** @type {__VLS_StyleScopedClasses['canvas-height']} */ ;
+/** @type {__VLS_StyleScopedClasses['canvas-height']} */ ;
+/** @type {__VLS_StyleScopedClasses['canvas-height']} */ ;
+/** @type {__VLS_StyleScopedClasses['canvas-height']} */ ;
+/** @type {__VLS_StyleScopedClasses['canvas-height']} */ ;
 /** @type {__VLS_StyleScopedClasses['canvas-zoom']} */ ;
+/** @type {__VLS_StyleScopedClasses['canvas-height']} */ ;
 /** @type {__VLS_StyleScopedClasses['canvas-zoom']} */ ;
 /** @type {__VLS_StyleScopedClasses['close-editor']} */ ;
 /** @type {__VLS_StyleScopedClasses['canvas-zoom']} */ ;
@@ -61,6 +77,48 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({});
 __VLS_asFunctionalElement1(__VLS_intrinsics.h2, __VLS_intrinsics.h2)({});
 __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({});
 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+    ...{ class: "canvas-height" },
+});
+/** @type {__VLS_StyleScopedClasses['canvas-height']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+    ...{ onClick: (...[$event]) => {
+            return (__VLS_ctx.changeHeight((__VLS_ctx.layout.height || 620) - 80));
+            // @ts-ignore
+            [changeHeight, layout,];
+        } },
+    title: "减少画板高度",
+});
+let __VLS_0;
+/** @ts-ignore @type { | typeof __VLS_components.Minus} */
+Minus;
+// @ts-ignore
+const __VLS_1 = __VLS_asFunctionalComponent1(__VLS_0, new __VLS_0({}));
+const __VLS_2 = __VLS_1({}, ...__VLS_functionalComponentArgsRest(__VLS_1));
+__VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+    ...{ onChange: (__VLS_ctx.inputHeight) },
+    type: "number",
+    min: "320",
+    max: "1600",
+    step: "20",
+    value: (__VLS_ctx.layout.height || 620),
+});
+__VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+    ...{ onClick: (...[$event]) => {
+            return (__VLS_ctx.changeHeight((__VLS_ctx.layout.height || 620) + 80));
+            // @ts-ignore
+            [changeHeight, layout, layout, inputHeight,];
+        } },
+    title: "增加画板高度",
+});
+let __VLS_5;
+/** @ts-ignore @type { | typeof __VLS_components.Plus} */
+Plus;
+// @ts-ignore
+const __VLS_6 = __VLS_asFunctionalComponent1(__VLS_5, new __VLS_5({}));
+const __VLS_7 = __VLS_6({}, ...__VLS_functionalComponentArgsRest(__VLS_6));
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
     ...{ class: "canvas-zoom" },
 });
 /** @type {__VLS_StyleScopedClasses['canvas-zoom']} */ ;
@@ -70,13 +128,14 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
             // @ts-ignore
             [zoom, zoom,];
         } },
+    title: "缩小",
 });
-let __VLS_0;
+let __VLS_10;
 /** @ts-ignore @type { | typeof __VLS_components.Minus} */
 Minus;
 // @ts-ignore
-const __VLS_1 = __VLS_asFunctionalComponent1(__VLS_0, new __VLS_0({}));
-const __VLS_2 = __VLS_1({}, ...__VLS_functionalComponentArgsRest(__VLS_1));
+const __VLS_11 = __VLS_asFunctionalComponent1(__VLS_10, new __VLS_10({}));
+const __VLS_12 = __VLS_11({}, ...__VLS_functionalComponentArgsRest(__VLS_11));
 __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
 (Math.round(__VLS_ctx.zoom * 100));
 __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
@@ -85,13 +144,14 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
             // @ts-ignore
             [zoom, zoom, zoom,];
         } },
+    title: "放大",
 });
-let __VLS_5;
+let __VLS_15;
 /** @ts-ignore @type { | typeof __VLS_components.Plus} */
 Plus;
 // @ts-ignore
-const __VLS_6 = __VLS_asFunctionalComponent1(__VLS_5, new __VLS_5({}));
-const __VLS_7 = __VLS_6({}, ...__VLS_functionalComponentArgsRest(__VLS_6));
+const __VLS_16 = __VLS_asFunctionalComponent1(__VLS_15, new __VLS_15({}));
+const __VLS_17 = __VLS_16({}, ...__VLS_functionalComponentArgsRest(__VLS_16));
 __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
     ...{ onClick: (...[$event]) => {
             return (__VLS_ctx.zoom = 1);
@@ -108,12 +168,12 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
     ...{ class: "close-editor" },
 });
 /** @type {__VLS_StyleScopedClasses['close-editor']} */ ;
-let __VLS_10;
+let __VLS_20;
 /** @ts-ignore @type { | typeof __VLS_components.X} */
 X;
 // @ts-ignore
-const __VLS_11 = __VLS_asFunctionalComponent1(__VLS_10, new __VLS_10({}));
-const __VLS_12 = __VLS_11({}, ...__VLS_functionalComponentArgsRest(__VLS_11));
+const __VLS_21 = __VLS_asFunctionalComponent1(__VLS_20, new __VLS_20({}));
+const __VLS_22 = __VLS_21({}, ...__VLS_functionalComponentArgsRest(__VLS_21));
 __VLS_asFunctionalElement1(__VLS_intrinsics.main, __VLS_intrinsics.main)({});
 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
     ...{ class: "canvas-scroll" },
@@ -134,7 +194,7 @@ for (const [block] of __VLS_vFor((__VLS_ctx.blocks))) {
         ...{ onPointerdown: (...[$event]) => {
                 return (__VLS_ctx.begin($event, block, 'move'));
                 // @ts-ignore
-                [zoom, zoom, zoom, layout, layout, blocks, begin,];
+                [layout, layout, zoom, zoom, zoom, blocks, begin,];
             } },
         key: (block.id),
         ...{ class: "free-layout-block" },
@@ -158,25 +218,25 @@ for (const [block] of __VLS_vFor((__VLS_ctx.blocks))) {
         title: "删除",
     });
     /** @type {__VLS_StyleScopedClasses['delete-block']} */ ;
-    let __VLS_15;
+    let __VLS_25;
     /** @ts-ignore @type { | typeof __VLS_components.Trash2} */
     Trash2;
     // @ts-ignore
-    const __VLS_16 = __VLS_asFunctionalComponent1(__VLS_15, new __VLS_15({}));
-    const __VLS_17 = __VLS_16({}, ...__VLS_functionalComponentArgsRest(__VLS_16));
+    const __VLS_26 = __VLS_asFunctionalComponent1(__VLS_25, new __VLS_25({}));
+    const __VLS_27 = __VLS_26({}, ...__VLS_functionalComponentArgsRest(__VLS_26));
     __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
         ...{ class: "block-content" },
     });
     /** @type {__VLS_StyleScopedClasses['block-content']} */ ;
     if (block.kind === 'stem') {
-        const __VLS_20 = MathPreview;
+        const __VLS_30 = MathPreview;
         // @ts-ignore
-        const __VLS_21 = __VLS_asFunctionalComponent1(__VLS_20, new __VLS_20({
+        const __VLS_31 = __VLS_asFunctionalComponent1(__VLS_30, new __VLS_30({
             text: (__VLS_ctx.question.stem),
         }));
-        const __VLS_22 = __VLS_21({
+        const __VLS_32 = __VLS_31({
             text: (__VLS_ctx.question.stem),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_21));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_31));
     }
     else if (block.kind === 'options') {
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
@@ -184,29 +244,29 @@ for (const [block] of __VLS_vFor((__VLS_ctx.blocks))) {
         });
         /** @type {__VLS_StyleScopedClasses['canvas-options']} */ ;
         for (const [option, index] of __VLS_vFor((__VLS_ctx.question.options))) {
-            const __VLS_25 = MathPreview;
+            const __VLS_35 = MathPreview;
             // @ts-ignore
-            const __VLS_26 = __VLS_asFunctionalComponent1(__VLS_25, new __VLS_25({
+            const __VLS_36 = __VLS_asFunctionalComponent1(__VLS_35, new __VLS_35({
                 key: (index),
                 text: (`${String.fromCharCode(65 + index)}. ${option}`),
             }));
-            const __VLS_27 = __VLS_26({
+            const __VLS_37 = __VLS_36({
                 key: (index),
                 text: (`${String.fromCharCode(65 + index)}. ${option}`),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_26));
+            }, ...__VLS_functionalComponentArgsRest(__VLS_36));
             // @ts-ignore
             [question, question,];
         }
     }
     else if (__VLS_ctx.question.figureUrls?.[block.figureIndex || 0]) {
-        const __VLS_30 = AuthenticatedImage;
+        const __VLS_40 = AuthenticatedImage;
         // @ts-ignore
-        const __VLS_31 = __VLS_asFunctionalComponent1(__VLS_30, new __VLS_30({
+        const __VLS_41 = __VLS_asFunctionalComponent1(__VLS_40, new __VLS_40({
             path: (__VLS_ctx.question.figureUrls[block.figureIndex || 0]),
         }));
-        const __VLS_32 = __VLS_31({
+        const __VLS_42 = __VLS_41({
             path: (__VLS_ctx.question.figureUrls[block.figureIndex || 0]),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_31));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_41));
     }
     __VLS_asFunctionalElement1(__VLS_intrinsics.i, __VLS_intrinsics.i)({
         ...{ onPointerdown: (...[$event]) => {
@@ -226,12 +286,12 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
     ...{ class: "ghost" },
 });
 /** @type {__VLS_StyleScopedClasses['ghost']} */ ;
-let __VLS_35;
+let __VLS_45;
 /** @ts-ignore @type { | typeof __VLS_components.RotateCcw} */
 RotateCcw;
 // @ts-ignore
-const __VLS_36 = __VLS_asFunctionalComponent1(__VLS_35, new __VLS_35({}));
-const __VLS_37 = __VLS_36({}, ...__VLS_functionalComponentArgsRest(__VLS_36));
+const __VLS_46 = __VLS_asFunctionalComponent1(__VLS_45, new __VLS_45({}));
+const __VLS_47 = __VLS_46({}, ...__VLS_functionalComponentArgsRest(__VLS_46));
 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({});
 __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
     ...{ onClick: (...[$event]) => {
@@ -246,18 +306,18 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
     ...{ onClick: (...[$event]) => {
             return (__VLS_ctx.emit('save', __VLS_ctx.layout));
             // @ts-ignore
-            [emit, layout,];
+            [layout, emit,];
         } },
     ...{ class: "primary" },
     disabled: (__VLS_ctx.saving),
 });
 /** @type {__VLS_StyleScopedClasses['primary']} */ ;
-let __VLS_40;
+let __VLS_50;
 /** @ts-ignore @type { | typeof __VLS_components.CheckCircle2} */
 CheckCircle2;
 // @ts-ignore
-const __VLS_41 = __VLS_asFunctionalComponent1(__VLS_40, new __VLS_40({}));
-const __VLS_42 = __VLS_41({}, ...__VLS_functionalComponentArgsRest(__VLS_41));
+const __VLS_51 = __VLS_asFunctionalComponent1(__VLS_50, new __VLS_50({}));
+const __VLS_52 = __VLS_51({}, ...__VLS_functionalComponentArgsRest(__VLS_51));
 (__VLS_ctx.saving ? '保存中' : '保存版式');
 // @ts-ignore
 [saving, saving,];

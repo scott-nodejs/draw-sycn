@@ -8,11 +8,11 @@ type DragMode='move'|'n'|'s'|'e'|'w'|'ne'|'nw'|'se'|'sw'
 const handles:DragMode[]=['n','s','e','w','ne','nw','se','sw']
 const props=defineProps<{paper:Paper;question:Question;recognizing?:boolean}>()
 const emit=defineEmits<{(event:'update:regions',regions:NonNullable<Question['sourceRegions']>):void;(event:'recognize'):void}>()
-const viewport=ref<HTMLElement|null>(null),pageUrls=ref<(string|null)[]>([]),loadingPages=ref(new Set<number>()),pageErrors=ref(new Set<number>()),loadError=ref('')
+const viewport=ref<HTMLElement|null>(null),pageUrls=ref<(string|null)[]>([]),loadingPages=ref(new Set<number>()),renderedPages=ref(new Set<number>()),pageErrors=ref(new Set<number>()),loadError=ref('')
 let drag:null|{index:number;x:number;y:number;mode:DragMode;region:Region;box:DOMRect;grabX:number;grabY:number}=null
 let loadGeneration=0
 
-function release(){loadGeneration++;pageUrls.value.forEach(url=>url&&URL.revokeObjectURL(url));pageUrls.value=[];loadingPages.value=new Set();pageErrors.value=new Set()}
+function release(){loadGeneration++;pageUrls.value.forEach(url=>url&&URL.revokeObjectURL(url));pageUrls.value=[];loadingPages.value=new Set();renderedPages.value=new Set();pageErrors.value=new Set()}
 async function loadPage(page:number,generation:number){
  if(pageUrls.value[page-1]||loadingPages.value.has(page))return
  const loading=new Set(loadingPages.value);loading.add(page);loadingPages.value=loading
@@ -21,7 +21,6 @@ async function loadPage(page:number,generation:number){
   if(generation!==loadGeneration){URL.revokeObjectURL(url);return}
   const urls=[...pageUrls.value];urls[page-1]=url;pageUrls.value=urls
   const errors=new Set(pageErrors.value);errors.delete(page);pageErrors.value=errors;loadError.value=''
-  if(regionsForPage(page).length){await nextTick();window.setTimeout(scrollToQuestion,40)}
  }catch(error){
   if(generation!==loadGeneration)return
   const errors=new Set(pageErrors.value);errors.add(page);pageErrors.value=errors
@@ -30,6 +29,7 @@ async function loadPage(page:number,generation:number){
   if(generation===loadGeneration){const next=new Set(loadingPages.value);next.delete(page);loadingPages.value=next}
  }
 }
+function pageRendered(page:number){const rendered=new Set(renderedPages.value);rendered.add(page);renderedPages.value=rendered;if(regionsForPage(page).length)nextTick().then(()=>window.setTimeout(scrollToQuestion,40))}
 async function loadPaper(){
  release();loadError.value='';const generation=loadGeneration;const count=Math.max(1,props.paper.pageCount);pageUrls.value=Array(count).fill(null)
  const questionPages=[...new Set((props.question.sourceRegions||[]).map(region=>region.pageNumber))].filter(page=>page>=1&&page<=count)
@@ -52,10 +52,10 @@ watch(()=>props.paper.id,loadPaper,{immediate:true});watch(()=>props.question.id
  <div ref="viewport" class="paper-source-preview">
   <div v-if="loadError&&pageUrls.every(url=>!url)" class="paper-source-state error-state">{{loadError}}</div>
   <div v-else class="paper-pages">
-   <div v-for="(url,pageIndex) in pageUrls" :key="pageIndex" class="paper-source-page" :class="{'page-pending':!url}" :data-page="pageIndex+1">
-    <div class="page-number">第 {{pageIndex+1}} 页</div><img v-if="url" :src="url" :alt="`${paper.title} 第 ${pageIndex+1} 页`" loading="lazy" draggable="false"/>
-    <div v-else class="page-loading"><LoaderCircle v-if="loadingPages.has(pageIndex+1)" class="spin"/><span>{{pageErrors.has(pageIndex+1)?'本页加载失败':'正在加载本页'}}</span><button v-if="pageErrors.has(pageIndex+1)" @click="loadPage(pageIndex+1,loadGeneration)">重试</button></div>
-    <div v-for="item in regionsForPage(pageIndex+1)" :key="item.index" class="paper-question-region" :style="{left:`${item.region.x0/10}%`,top:`${item.region.y0/10}%`,width:`${(item.region.x1-item.region.x0)/10}%`,height:`${(item.region.y1-item.region.y0)/10}%`}" @pointerdown="startAdjust($event,item.index,'move')">
+   <div v-for="(url,pageIndex) in pageUrls" :key="pageIndex" class="paper-source-page" :class="{'page-pending':!renderedPages.has(pageIndex+1)}" :data-page="pageIndex+1">
+    <div class="page-number">第 {{pageIndex+1}} 页</div><img v-if="url" :src="url" :alt="`${paper.title} 第 ${pageIndex+1} 页`" :loading="regionsForPage(pageIndex+1).length?'eager':'lazy'" draggable="false" @load="pageRendered(pageIndex+1)"/>
+    <div v-if="!renderedPages.has(pageIndex+1)" class="page-loading"><LoaderCircle v-if="!pageErrors.has(pageIndex+1)" class="spin"/><span>{{pageErrors.has(pageIndex+1)?'本页加载失败':'正在加载本页'}}</span><button v-if="pageErrors.has(pageIndex+1)" @click="loadPage(pageIndex+1,loadGeneration)">重试</button></div>
+    <div v-for="item in renderedPages.has(pageIndex+1)?regionsForPage(pageIndex+1):[]" :key="item.index" class="paper-question-region" :style="{left:`${item.region.x0/10}%`,top:`${item.region.y0/10}%`,width:`${(item.region.x1-item.region.x0)/10}%`,height:`${(item.region.y1-item.region.y0)/10}%`}" @pointerdown="startAdjust($event,item.index,'move')">
      <div class="region-float-actions" @pointerdown.stop><span>第 {{question.number}} 题</span><em><Move/>拖动或缩放红框</em><button :disabled="recognizing" @click.stop="emit('recognize')"><ScanLine/>{{recognizing?'识别中':'重新识别'}}</button></div>
      <i v-for="handle in handles" :key="handle" class="resize-handle" :data-handle="handle" @pointerdown="startAdjust($event,item.index,handle)"></i>
     </div>
