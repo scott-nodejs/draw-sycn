@@ -122,7 +122,7 @@ public class PaperProcessingService {
   public void tick() {
     int capacity = MAX_CONCURRENT_JOBS - activeJobs.get();
     if (capacity <= 0) return;
-    List<Map<String, Object>> jobs = jdbc.query("SELECT id,paper_id,status,stage,provider,request_id,retry_count FROM teaching_parse_job WHERE status IN ('queued','processing') AND (next_retry_at IS NULL OR next_retry_at<=?) AND (locked_at IS NULL OR locked_at<?) ORDER BY created_at LIMIT ?",
+    List<Map<String, Object>> jobs = jdbc.query("SELECT j.id,j.paper_id,j.status,j.stage,j.provider,j.request_id,j.retry_count FROM teaching_parse_job j JOIN teaching_paper p ON p.id=j.paper_id WHERE p.deleted_at IS NULL AND j.status IN ('queued','processing') AND (j.next_retry_at IS NULL OR j.next_retry_at<=?) AND (j.locked_at IS NULL OR j.locked_at<?) ORDER BY j.created_at LIMIT ?",
       (rs, n) -> { Map<String, Object> row = new LinkedHashMap<>(); row.put("id", rs.getString("id")); row.put("paperId", rs.getString("paper_id")); row.put("stage", rs.getString("stage")); row.put("provider", rs.getString("provider")); row.put("requestId", rs.getString("request_id")); row.put("retryCount", rs.getInt("retry_count")); return row; },
       Timestamp.valueOf(LocalDateTime.now()), Timestamp.valueOf(LocalDateTime.now().minusMinutes(10)), capacity);
     if (jobs.isEmpty()) return;
@@ -226,6 +226,10 @@ public class PaperProcessingService {
       stageExecutions.complete(qualityExecution, json.writeValueAsString(qualityReport));
       stageExecutions.complete(semanticExecution, "{\"questionCount\":" + structured.path("questions").size() + "}");
       transactions.executeWithoutResult(status -> { try { persistQuestions(paperId, structured.path("questions")); } catch (Exception error) { throw new IllegalStateException(error); } });
+      if (isPaperDeleted(paperId)) {
+        jdbc.update("UPDATE teaching_parse_job SET status='cancelled',stage='cancelled',locked_at=NULL,finished_at=?,updated_at=? WHERE id=?", now(), now(), jobId);
+        return;
+      }
       Path structuredPath = paperDirectory(paperId).resolve("structured-questions.json"); json.writeValue(structuredPath.toFile(), structured);
       int count = structured.path("questions").size();
       jdbc.update("UPDATE teaching_parse_job SET status='review',stage='review_required',progress=100,result_object_key=?,locked_at=NULL,finished_at=?,updated_at=? WHERE id=?", structuredPath.toString(), now(), now(), jobId);
@@ -235,6 +239,11 @@ public class PaperProcessingService {
   }
 
   protected void persistQuestions(String paperId, JsonNode questions) throws Exception {
+    try {
+      jdbc.queryForObject("SELECT id FROM teaching_paper WHERE id=? AND deleted_at IS NULL FOR UPDATE", String.class, paperId);
+    } catch (org.springframework.dao.EmptyResultDataAccessException error) {
+      return;
+    }
     Integer confirmed = jdbc.queryForObject("SELECT COUNT(*) FROM teaching_question WHERE paper_id=? AND review_status='confirmed'", Integer.class, paperId);
     if (confirmed != null && confirmed > 0) throw new ProviderException("PAPER_ALREADY_REVIEWED", "试卷已有确认题目，不能自动覆盖");
     jdbc.update("DELETE qkp FROM question_knowledge_point qkp JOIN teaching_question q ON q.id=qkp.question_id WHERE q.paper_id=?", paperId);
@@ -254,6 +263,11 @@ public class PaperProcessingService {
           questionId, point.path("id").asText(), clamp(point.path("confidence").asInt()), point.path("reason").asText(), current);
       }
     }
+  }
+
+  private boolean isPaperDeleted(String paperId) {
+    Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM teaching_paper WHERE id=? AND deleted_at IS NULL", Integer.class, paperId);
+    return count == null || count == 0;
   }
 
   private ObjectNode createQuestionCrops(String paperId, String questionId, JsonNode regions, JsonNode figureRegions) throws Exception {

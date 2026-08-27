@@ -39,3 +39,27 @@
   font-size: 12px;
   white-space: nowrap;
 }
+
+.paper-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.paper-delete {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #9aa5b5;
+  display: grid;
+  place-items: center;
+}
+
+.paper-delete:hover:not(:disabled) {
+  background: #fff0f1;
+  color: #cf4654;
+}
+
+.paper-delete svg { width: 16px; }

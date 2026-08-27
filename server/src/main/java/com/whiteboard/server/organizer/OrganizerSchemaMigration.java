@@ -22,6 +22,8 @@ public class OrganizerSchemaMigration {
     addJoinColumn("confidence", "INT NOT NULL DEFAULT 0 AFTER knowledge_point_id");
     addJoinColumn("reason", "VARCHAR(500) NOT NULL DEFAULT '' AFTER confidence");
     addJoinColumn("source", "VARCHAR(32) NOT NULL DEFAULT 'manual' AFTER reason");
+    addTableColumn("teaching_paper", "deleted_at", "DATETIME NULL AFTER status");
+    addTableColumn("teaching_question", "deleted_at", "DATETIME NULL AFTER teaching_status");
   }
 
   private void addColumn(String column, String definition) {
@@ -43,5 +45,12 @@ public class OrganizerSchemaMigration {
     if (count != null && count == 0) {
       jdbc.execute("ALTER TABLE question_knowledge_point ADD COLUMN " + column + " " + definition);
     }
+  }
+
+  private void addTableColumn(String table, String column, String definition) {
+    Integer count = jdbc.queryForObject(
+        "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=?",
+        Integer.class, table, column);
+    if (count != null && count == 0) jdbc.execute("ALTER TABLE " + table + " ADD COLUMN " + column + " " + definition);
   }
 }

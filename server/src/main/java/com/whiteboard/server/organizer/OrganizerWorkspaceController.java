@@ -46,6 +46,13 @@ public class OrganizerWorkspaceController {
     return paper;
   }
 
+  @DeleteMapping("/papers/{paperId}")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void deletePaper(@PathVariable String paperId, @RequestHeader("X-User-Id") String userId) {
+    organizer.assertOrganizerPaper(paperId, userId);
+    teaching.deletePaper(paperId, userId);
+  }
+
   private boolean isZip(MultipartFile file) {
     String type = file.getContentType() == null ? "" : file.getContentType().toLowerCase();
     String name = file.getOriginalFilename() == null ? "" : file.getOriginalFilename().toLowerCase();

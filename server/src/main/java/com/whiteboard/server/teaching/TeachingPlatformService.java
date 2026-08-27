@@ -60,7 +60,7 @@ public class TeachingPlatformService {
   public List<Map<String, Object>> listPapers(String organizationId, String userId) {
     String sql = "SELECT id, title, subject, grade, source, page_count, question_count, reviewed_count, " +
       "taught_count, progress, CASE WHEN question_count>0 AND reviewed_count>=question_count THEN 'ready' ELSE status END status, created_at FROM teaching_paper " +
-      "WHERE source <> '试题导入' AND ((? <> '' AND organization_id = ?) OR (? = '' AND creator_id = ?)) ORDER BY created_at DESC";
+      "WHERE deleted_at IS NULL AND source <> '试题导入' AND ((? <> '' AND organization_id = ?) OR (? = '' AND creator_id = ?)) ORDER BY created_at DESC";
     return jdbc.query(sql, (rs, rowNum) -> paperRow(rs), safe(organizationId), safe(organizationId), safe(organizationId), safe(userId));
   }
 
@@ -74,26 +74,12 @@ public class TeachingPlatformService {
   }
 
   @Transactional
-  public void deletePaper(String paperId, String userId) throws IOException {
+  public void deletePaper(String paperId, String userId) {
     assertPaperOwner(paperId, userId);
-    Integer taught = jdbc.queryForObject("SELECT GREATEST(COALESCE((SELECT taught_count FROM teaching_paper WHERE id=?),0), COALESCE((SELECT COUNT(*) FROM teaching_question WHERE paper_id=? AND teaching_status='recorded'),0))", Integer.class, paperId, paperId);
-    if (taught != null && taught > 0) throw new ResponseStatusException(HttpStatus.CONFLICT, "批次中存在已讲解题目，不能删除");
-    String manifest = jdbc.queryForObject("SELECT pdf_object_key FROM teaching_paper WHERE id=?", String.class, paperId);
-    List<String> questionIds = jdbc.query("SELECT id FROM teaching_question WHERE paper_id=?", (rs, rowNum) -> rs.getString(1), paperId);
-    if (!questionIds.isEmpty()) {
-      String placeholders = String.join(",", Collections.nCopies(questionIds.size(), "?"));
-      Object[] ids = questionIds.toArray();
-      jdbc.update("DELETE FROM learning_product_question WHERE question_id IN (" + placeholders + ")", ids);
-      jdbc.update("DELETE FROM question_revision WHERE question_id IN (" + placeholders + ")", ids);
-    }
-    jdbc.update("DELETE FROM question_reprocess_job WHERE paper_id=?", paperId);
-    jdbc.update("DELETE FROM teaching_question WHERE paper_id=?", paperId);
-    jdbc.update("DELETE FROM paper_ocr_result WHERE paper_id=?", paperId);
-    jdbc.update("DELETE FROM paper_page WHERE paper_id=?", paperId);
-    jdbc.update("DELETE FROM teaching_parse_job WHERE paper_id=?", paperId);
-    jdbc.update("UPDATE learning_product SET paper_id=NULL WHERE paper_id=?", paperId);
-    jdbc.update("DELETE FROM teaching_paper WHERE id=?", paperId);
-    deletePaperDirectory(manifest, paperId);
+    Timestamp deletedAt = Timestamp.valueOf(LocalDateTime.now());
+    jdbc.update("UPDATE teaching_question SET deleted_at=?,updated_at=? WHERE paper_id=? AND deleted_at IS NULL", deletedAt, deletedAt, paperId);
+    jdbc.update("UPDATE teaching_parse_job SET status='cancelled',stage='cancelled',locked_at=NULL,finished_at=?,updated_at=? WHERE paper_id=? AND status IN ('queued','processing')", deletedAt, deletedAt, paperId);
+    jdbc.update("UPDATE teaching_paper SET deleted_at=?,updated_at=? WHERE id=? AND deleted_at IS NULL", deletedAt, deletedAt, paperId);
   }
 
   private void deletePaperDirectory(String manifest, String paperId) throws IOException {
@@ -292,7 +278,7 @@ public class TeachingPlatformService {
   public Map<String, Object> getPaper(String id) {
     try {
       return jdbc.queryForObject("SELECT id, title, subject, grade, source, page_count, question_count, " +
-        "reviewed_count, taught_count, progress, CASE WHEN question_count>0 AND reviewed_count>=question_count THEN 'ready' ELSE status END status, created_at FROM teaching_paper WHERE id = ?", (rs, n) -> paperRow(rs), id);
+        "reviewed_count, taught_count, progress, CASE WHEN question_count>0 AND reviewed_count>=question_count THEN 'ready' ELSE status END status, created_at FROM teaching_paper WHERE id = ? AND deleted_at IS NULL", (rs, n) -> paperRow(rs), id);
     } catch (EmptyResultDataAccessException error) {
       throw notFound("试卷不存在");
     }
@@ -301,7 +287,7 @@ public class TeachingPlatformService {
   public List<Map<String, Object>> listQuestions(String paperId, String userId) {
     assertPaperOwner(paperId, userId);
     return jdbc.query("SELECT id, paper_id, question_number, question_type, stem, options_json, answer, analysis, " +
-      "points, confidence, difficulty, review_status, teaching_status, crop_regions_json, version FROM teaching_question WHERE paper_id = ? " +
+      "points, confidence, difficulty, review_status, teaching_status, crop_regions_json, version FROM teaching_question WHERE paper_id = ? AND deleted_at IS NULL " +
       "ORDER BY question_number", (rs, rowNum) -> questionRow(rs), paperId);
   }
 
@@ -309,7 +295,7 @@ public class TeachingPlatformService {
     String sql = "SELECT q.id,q.paper_id,q.question_number,q.question_type,q.stem,q.options_json,q.answer,q.analysis," +
       "q.points,q.confidence,q.difficulty,q.review_status,q.teaching_status,q.crop_regions_json,q.version," +
       "p.title source_title,p.subject source_subject,p.grade source_grade,p.source source_type FROM teaching_question q " +
-      "JOIN teaching_paper p ON p.id=q.paper_id WHERE q.review_status='confirmed' AND ((? <> '' AND p.organization_id=?) OR (? = '' AND p.creator_id=?)) " +
+      "JOIN teaching_paper p ON p.id=q.paper_id WHERE q.deleted_at IS NULL AND p.deleted_at IS NULL AND q.review_status='confirmed' AND ((? <> '' AND p.organization_id=?) OR (? = '' AND p.creator_id=?)) " +
       "ORDER BY q.created_at DESC,q.question_number";
     return jdbc.query(sql, (rs, rowNum) -> { Map<String, Object> row = questionRow(rs); row.put("sourceTitle", rs.getString("source_title")); row.put("sourceSubject", rs.getString("source_subject")); row.put("sourceGrade", rs.getString("source_grade")); row.put("sourceType", rs.getString("source_type")); return row; },
       safe(organizationId), safe(organizationId), safe(organizationId), safe(userId));
@@ -474,7 +460,7 @@ public class TeachingPlatformService {
   }
 
   private void assertPaperOwner(String paperId, String userId) {
-    Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM teaching_paper WHERE id=? AND creator_id=?", Integer.class, paperId, safe(userId));
+    Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM teaching_paper WHERE id=? AND creator_id=? AND deleted_at IS NULL", Integer.class, paperId, safe(userId));
     if (count == null || count == 0) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "无权访问该试卷");
   }
 
@@ -630,7 +616,7 @@ public class TeachingPlatformService {
   private Map<String, Object> getQuestion(String id) {
     try {
       return jdbc.queryForObject("SELECT id, paper_id, question_number, question_type, stem, options_json, answer, analysis, " +
-        "points, confidence, difficulty, review_status, teaching_status, crop_regions_json, version FROM teaching_question WHERE id=?", (rs, n) -> questionRow(rs), id);
+        "points, confidence, difficulty, review_status, teaching_status, crop_regions_json, version FROM teaching_question WHERE id=? AND deleted_at IS NULL", (rs, n) -> questionRow(rs), id);
     } catch (EmptyResultDataAccessException error) { throw notFound("题目不存在"); }
   }
 
