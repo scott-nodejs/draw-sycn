@@ -120,4 +120,10 @@ public class OrganizerWorkspaceController {
   public Map<String, Object> unpublish(@PathVariable String setId, @RequestHeader("X-User-Id") String userId) {
     return organizer.unpublish(setId, userId);
   }
+
+  @DeleteMapping("/question-sets/{setId}")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void deleteQuestionSet(@PathVariable String setId, @RequestHeader("X-User-Id") String userId) {
+    organizer.deleteQuestionSet(setId, userId);
+  }
 }

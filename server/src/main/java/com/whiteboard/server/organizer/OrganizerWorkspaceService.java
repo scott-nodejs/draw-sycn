@@ -38,13 +38,13 @@ public class OrganizerWorkspaceService {
     result.put("paperCount", count("SELECT COUNT(*) FROM organizer_paper_workspace w JOIN teaching_paper p ON p.id=w.paper_id WHERE w.organizer_id=? AND p.deleted_at IS NULL", userId));
     result.put("reviewingCount", count("SELECT COUNT(*) FROM organizer_paper_workspace w JOIN teaching_paper p ON p.id=w.paper_id WHERE w.organizer_id=? AND p.deleted_at IS NULL AND p.status IN ('processing','review')", userId));
     result.put("confirmedQuestionCount", count("SELECT COUNT(*) FROM teaching_question q JOIN organizer_paper_workspace w ON w.paper_id=q.paper_id JOIN teaching_paper p ON p.id=q.paper_id WHERE w.organizer_id=? AND p.deleted_at IS NULL AND q.deleted_at IS NULL AND q.review_status='confirmed'", userId));
-    result.put("publishedSetCount", count("SELECT COUNT(*) FROM organizer_question_set WHERE organizer_id=? AND status='published'", userId));
+    result.put("publishedSetCount", count("SELECT COUNT(*) FROM organizer_question_set WHERE organizer_id=? AND status='published' AND deleted_at IS NULL", userId));
     result.put("recentPapers", listPapers(userId));
     return result;
   }
 
   public List<Map<String, Object>> listPapers(String userId) {
-    return jdbc.query("SELECT p.id,p.title,p.subject,p.grade,p.page_count,p.question_count,p.reviewed_count,p.progress,COALESCE(j.status,p.status) status,COALESCE(j.error_code,'') error_code,COALESCE(j.error_message,'') error_message,p.created_at FROM organizer_paper_workspace w JOIN teaching_paper p ON p.id=w.paper_id LEFT JOIN teaching_parse_job j ON j.id=(SELECT latest.id FROM teaching_parse_job latest WHERE latest.paper_id=p.id ORDER BY latest.created_at DESC,latest.id DESC LIMIT 1) WHERE w.organizer_id=? AND p.deleted_at IS NULL ORDER BY p.created_at DESC",
+    return jdbc.query("SELECT p.id,p.title,p.subject,p.grade,p.page_count,p.question_count,p.reviewed_count,p.progress,CASE WHEN p.question_count>0 AND p.reviewed_count>=p.question_count THEN 'ready' ELSE COALESCE(j.status,p.status) END status,COALESCE(j.error_code,'') error_code,COALESCE(j.error_message,'') error_message,p.created_at FROM organizer_paper_workspace w JOIN teaching_paper p ON p.id=w.paper_id LEFT JOIN teaching_parse_job j ON j.id=(SELECT latest.id FROM teaching_parse_job latest WHERE latest.paper_id=p.id ORDER BY latest.created_at DESC,latest.id DESC LIMIT 1) WHERE w.organizer_id=? AND p.deleted_at IS NULL ORDER BY p.created_at DESC",
       (rs,n) -> { Map<String,Object> row=new LinkedHashMap<>(); row.put("id",rs.getString("id")); row.put("title",rs.getString("title")); row.put("subject",rs.getString("subject")); row.put("grade",rs.getString("grade")); row.put("pageCount",rs.getInt("page_count")); row.put("questionCount",rs.getInt("question_count")); row.put("reviewedCount",rs.getInt("reviewed_count")); row.put("progress",rs.getInt("progress")); row.put("status",rs.getString("status")); row.put("errorCode",rs.getString("error_code")); row.put("errorMessage",rs.getString("error_message")); row.put("createdAt",rs.getTimestamp("created_at").toLocalDateTime().toString()); return row; }, userId);
   }
 
@@ -105,7 +105,7 @@ public class OrganizerWorkspaceService {
   }
 
   public List<Map<String, Object>> listQuestionSets(String userId) {
-    return jdbc.query("SELECT s.*,COUNT(q.id) question_count FROM organizer_question_set s LEFT JOIN organizer_question_set_item i ON i.set_id=s.id LEFT JOIN teaching_question q ON q.id=i.question_id AND q.deleted_at IS NULL WHERE s.organizer_id=? GROUP BY s.id ORDER BY s.updated_at DESC",
+    return jdbc.query("SELECT s.*,COUNT(q.id) question_count FROM organizer_question_set s LEFT JOIN organizer_question_set_item i ON i.set_id=s.id LEFT JOIN teaching_question q ON q.id=i.question_id AND q.deleted_at IS NULL WHERE s.organizer_id=? AND s.deleted_at IS NULL GROUP BY s.id ORDER BY s.updated_at DESC",
       (rs,n) -> { Map<String,Object> row=new LinkedHashMap<>(); String id=rs.getString("id"); row.put("id",id); row.put("title",rs.getString("title")); row.put("description",rs.getString("description")); row.put("subject",rs.getString("subject")); row.put("grade",rs.getString("grade")); row.put("collectionType",rs.getString("collection_type")); row.put("topicLabel",rs.getString("topic_label")); row.put("price",rs.getBigDecimal("price")); row.put("status",rs.getString("status")); row.put("questionCount",rs.getInt("question_count")); row.put("questionIds",jdbc.query("SELECT i.question_id FROM organizer_question_set_item i JOIN teaching_question q ON q.id=i.question_id WHERE i.set_id=? AND q.deleted_at IS NULL ORDER BY i.sort_order",(items,index)->items.getString(1),id)); row.put("updatedAt",rs.getTimestamp("updated_at").toLocalDateTime().toString()); return row; }, userId);
   }
 
@@ -155,8 +155,16 @@ public class OrganizerWorkspaceService {
     return getSet(setId, userId);
   }
 
+  @Transactional
+  public void deleteQuestionSet(String setId, String userId) {
+    assertSetOwner(setId, userId);
+    String status = jdbc.queryForObject("SELECT status FROM organizer_question_set WHERE id=?", String.class, setId);
+    if ("published".equals(status)) throw new ResponseStatusException(HttpStatus.CONFLICT, "请先下线试题集再删除");
+    jdbc.update("UPDATE organizer_question_set SET deleted_at=?,updated_at=? WHERE id=? AND deleted_at IS NULL", now(), now(), setId);
+  }
+
   private Map<String,Object> getSet(String setId,String userId){ assertSetOwner(setId,userId); Map<String,Object> row=jdbc.queryForMap("SELECT id,title,description,subject,grade,collection_type collectionType,topic_label topicLabel,price,status,product_id FROM organizer_question_set WHERE id=?",setId); row.put("questionIds",jdbc.query("SELECT i.question_id FROM organizer_question_set_item i JOIN teaching_question q ON q.id=i.question_id WHERE i.set_id=? AND q.deleted_at IS NULL ORDER BY i.sort_order",(rs,n)->rs.getString(1),setId)); return row; }
-  private void assertSetOwner(String setId,String userId){ if(count("SELECT COUNT(*) FROM organizer_question_set WHERE id=? AND organizer_id=?",setId,userId)==0) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"试题集不存在"); }
+  private void assertSetOwner(String setId,String userId){ if(count("SELECT COUNT(*) FROM organizer_question_set WHERE id=? AND organizer_id=? AND deleted_at IS NULL",setId,userId)==0) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"试题集不存在"); }
   private void assertOrganizerQuestion(String qid,String userId){ if(count("SELECT COUNT(*) FROM teaching_question q JOIN organizer_paper_workspace w ON w.paper_id=q.paper_id JOIN teaching_paper p ON p.id=q.paper_id WHERE q.id=? AND w.organizer_id=? AND p.deleted_at IS NULL AND q.deleted_at IS NULL AND q.review_status='confirmed'",qid,userId)==0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"只能加入本人已校对的题目"); }
   private int count(String sql,Object...args){ Integer value=jdbc.queryForObject(sql,Integer.class,args); return value==null?0:value; }
   private String required(String value,String name){ if(value==null||value.trim().isEmpty()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,name+"不能为空"); return value.trim(); }

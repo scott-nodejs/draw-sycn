@@ -101,9 +101,10 @@ public class PaddleOcrProvider implements OcrProvider {
       catch (ProviderException error) { throw error; }
       catch (Exception error) { throw new ProviderException("PADDLEOCR_POLL_FAILED", "PaddleOCR poll failed: " + error.getClass().getSimpleName()); }
       raw.add(response); JsonNode data = response.path("data"); String state = data.path("state").asText();
-      if ("failed".equalsIgnoreCase(state)) throw new ProviderException("PADDLEOCR_EXTRACT_FAILED", data.path("errorMsg").asText("PaddleOCR 解析失败"));
-      if ("done".equalsIgnoreCase(state)) { String url = data.path("resultUrl").path("jsonUrl").asText(); if (url.isEmpty()) throw new ProviderException("PADDLEOCR_INVALID_RESPONSE", "PaddleOCR 未返回 JSONL 地址"); resultUrls.add(url); }
-      else done = false;
+      if ("failed".equalsIgnoreCase(state) || "error".equalsIgnoreCase(state)) throw new ProviderException("PADDLEOCR_EXTRACT_FAILED", data.path("errorMsg").asText("PaddleOCR 解析失败"));
+      if ("done".equalsIgnoreCase(state) || "success".equalsIgnoreCase(state) || "completed".equalsIgnoreCase(state)) { String url = data.path("resultUrl").path("jsonUrl").asText(); if (url.isEmpty()) throw new ProviderException("PADDLEOCR_INVALID_RESPONSE", "PaddleOCR 未返回 JSONL 地址"); resultUrls.add(url); }
+      else if (state.isEmpty() || "queued".equalsIgnoreCase(state) || "pending".equalsIgnoreCase(state) || "running".equalsIgnoreCase(state) || "processing".equalsIgnoreCase(state)) done = false;
+      else throw new ProviderException("PADDLEOCR_UNKNOWN_STATE", "PaddleOCR 返回未知任务状态：" + state);
     }
     return new PollResult(done, raw, resultUrls);
   }

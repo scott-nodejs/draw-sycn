@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS organizer_question_set (
   topic_label VARCHAR(128) NOT NULL DEFAULT '',
   price DECIMAL(10,2) NOT NULL DEFAULT 0,
   status VARCHAR(32) NOT NULL DEFAULT 'draft',
+  deleted_at DATETIME NULL,
   created_at DATETIME NOT NULL,
   updated_at DATETIME NOT NULL,
   KEY idx_organizer_question_set_user (organizer_id, updated_at)

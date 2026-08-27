@@ -24,6 +24,7 @@ public class OrganizerSchemaMigration {
     addJoinColumn("source", "VARCHAR(32) NOT NULL DEFAULT 'manual' AFTER reason");
     addTableColumn("teaching_paper", "deleted_at", "DATETIME NULL AFTER status");
     addTableColumn("teaching_question", "deleted_at", "DATETIME NULL AFTER teaching_status");
+    addTableColumn("organizer_question_set", "deleted_at", "DATETIME NULL AFTER status");
   }
 
   private void addColumn(String column, String definition) {
