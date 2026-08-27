@@ -4,23 +4,65 @@ import { api } from '../api';
 const handles = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
 const props = defineProps();
 const emit = defineEmits();
-const viewport = ref(null), pageUrls = ref([]), loading = ref(false), loadError = ref('');
+const viewport = ref(null), pageUrls = ref([]), loadingPages = ref(new Set()), pageErrors = ref(new Set()), loadError = ref('');
 let drag = null;
-function release() { pageUrls.value.forEach(URL.revokeObjectURL); pageUrls.value = []; }
-async function loadPaper() { release(); loading.value = true; loadError.value = ''; try {
-    const urls = [];
-    for (let page = 1; page <= Math.max(1, props.paper.pageCount); page++)
-        urls.push(URL.createObjectURL(await api.pageBlob(props.paper.id, page)));
-    pageUrls.value = urls;
-    await nextTick();
-    window.setTimeout(scrollToQuestion, 80);
+let loadGeneration = 0;
+function release() { loadGeneration++; pageUrls.value.forEach(url => url && URL.revokeObjectURL(url)); pageUrls.value = []; loadingPages.value = new Set(); pageErrors.value = new Set(); }
+async function loadPage(page, generation) {
+    if (pageUrls.value[page - 1] || loadingPages.value.has(page))
+        return;
+    const loading = new Set(loadingPages.value);
+    loading.add(page);
+    loadingPages.value = loading;
+    try {
+        const url = URL.createObjectURL(await api.pageBlob(props.paper.id, page));
+        if (generation !== loadGeneration) {
+            URL.revokeObjectURL(url);
+            return;
+        }
+        const urls = [...pageUrls.value];
+        urls[page - 1] = url;
+        pageUrls.value = urls;
+        const errors = new Set(pageErrors.value);
+        errors.delete(page);
+        pageErrors.value = errors;
+        loadError.value = '';
+        if (regionsForPage(page).length) {
+            await nextTick();
+            window.setTimeout(scrollToQuestion, 40);
+        }
+    }
+    catch (error) {
+        if (generation !== loadGeneration)
+            return;
+        const errors = new Set(pageErrors.value);
+        errors.add(page);
+        pageErrors.value = errors;
+        if (pageUrls.value.every(url => !url))
+            loadError.value = error instanceof Error ? error.message : '原卷加载失败';
+    }
+    finally {
+        if (generation === loadGeneration) {
+            const next = new Set(loadingPages.value);
+            next.delete(page);
+            loadingPages.value = next;
+        }
+    }
 }
-catch (error) {
-    loadError.value = error instanceof Error ? error.message : '原卷加载失败';
+async function loadPaper() {
+    release();
+    loadError.value = '';
+    const generation = loadGeneration;
+    const count = Math.max(1, props.paper.pageCount);
+    pageUrls.value = Array(count).fill(null);
+    const questionPages = [...new Set((props.question.sourceRegions || []).map(region => region.pageNumber))].filter(page => page >= 1 && page <= count);
+    const remaining = Array.from({ length: count }, (_, index) => index + 1).filter(page => !questionPages.includes(page));
+    await Promise.all(questionPages.map(page => loadPage(page, generation)));
+    if (generation !== loadGeneration)
+        return;
+    for (let index = 0; index < remaining.length; index += 2)
+        await Promise.all(remaining.slice(index, index + 2).map(page => loadPage(page, generation)));
 }
-finally {
-    loading.value = false;
-} }
 function regionsForPage(page) { return (props.question.sourceRegions || []).map((region, index) => ({ region, index })).filter(item => item.region.pageNumber === page); }
 function scrollToQuestion() { const container = viewport.value, target = container?.querySelector('.paper-question-region'); if (!container || !target)
     return; container.scrollTo({ top: Math.max(0, target.offsetTop + target.parentElement.offsetTop - container.clientHeight * .25), behavior: 'smooth' }); }
@@ -57,7 +99,7 @@ else {
 function stopAdjust() { drag = null; window.removeEventListener('pointermove', adjust); }
 function clamp(value, min, max) { return Math.round(Math.max(min, Math.min(max, value))); }
 watch(() => props.paper.id, loadPaper, { immediate: true });
-watch(() => props.question.id, () => nextTick().then(scrollToQuestion));
+watch(() => props.question.id, () => { const pages = [...new Set((props.question.sourceRegions || []).map(region => region.pageNumber))]; pages.forEach(page => loadPage(page, loadGeneration)); nextTick().then(scrollToQuestion); });
 onBeforeUnmount(() => { release(); stopAdjust(); });
 const __VLS_ctx = {
     ...{},
@@ -94,29 +136,15 @@ let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['region-float-actions']} */ ;
 /** @type {__VLS_StyleScopedClasses['region-float-actions']} */ ;
 /** @type {__VLS_StyleScopedClasses['paper-source-preview']} */ ;
+/** @type {__VLS_StyleScopedClasses['paper-source-page']} */ ;
+/** @type {__VLS_StyleScopedClasses['page-loading']} */ ;
+/** @type {__VLS_StyleScopedClasses['page-loading']} */ ;
 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
     ref: "viewport",
     ...{ class: "paper-source-preview" },
 });
 /** @type {__VLS_StyleScopedClasses['paper-source-preview']} */ ;
-if (__VLS_ctx.loading) {
-    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-        ...{ class: "paper-source-state" },
-    });
-    /** @type {__VLS_StyleScopedClasses['paper-source-state']} */ ;
-    let __VLS_0;
-    /** @ts-ignore @type { | typeof __VLS_components.LoaderCircle} */
-    LoaderCircle;
-    // @ts-ignore
-    const __VLS_1 = __VLS_asFunctionalComponent1(__VLS_0, new __VLS_0({
-        ...{ class: "spin" },
-    }));
-    const __VLS_2 = __VLS_1({
-        ...{ class: "spin" },
-    }, ...__VLS_functionalComponentArgsRest(__VLS_1));
-    /** @type {__VLS_StyleScopedClasses['spin']} */ ;
-}
-else if (__VLS_ctx.loadError) {
+if (__VLS_ctx.loadError && __VLS_ctx.pageUrls.every(url => !url)) {
     __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
         ...{ class: "paper-source-state error-state" },
     });
@@ -131,31 +159,70 @@ else {
     /** @type {__VLS_StyleScopedClasses['paper-pages']} */ ;
     for (const [url, pageIndex] of __VLS_vFor((__VLS_ctx.pageUrls))) {
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-            key: (url),
+            key: (pageIndex),
             ...{ class: "paper-source-page" },
+            ...{ class: ({ 'page-pending': !url }) },
             'data-page': (pageIndex + 1),
         });
         /** @type {__VLS_StyleScopedClasses['paper-source-page']} */ ;
+        /** @type {__VLS_StyleScopedClasses['page-pending']} */ ;
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
             ...{ class: "page-number" },
         });
         /** @type {__VLS_StyleScopedClasses['page-number']} */ ;
         (pageIndex + 1);
-        __VLS_asFunctionalElement1(__VLS_intrinsics.img)({
-            src: (url),
-            alt: (`${__VLS_ctx.paper.title} 第 ${pageIndex + 1} 页`),
-            draggable: "false",
-        });
+        if (url) {
+            __VLS_asFunctionalElement1(__VLS_intrinsics.img)({
+                src: (url),
+                alt: (`${__VLS_ctx.paper.title} 第 ${pageIndex + 1} 页`),
+                loading: "lazy",
+                draggable: "false",
+            });
+        }
+        else {
+            __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                ...{ class: "page-loading" },
+            });
+            /** @type {__VLS_StyleScopedClasses['page-loading']} */ ;
+            if (__VLS_ctx.loadingPages.has(pageIndex + 1)) {
+                let __VLS_0;
+                /** @ts-ignore @type { | typeof __VLS_components.LoaderCircle} */
+                LoaderCircle;
+                // @ts-ignore
+                const __VLS_1 = __VLS_asFunctionalComponent1(__VLS_0, new __VLS_0({
+                    ...{ class: "spin" },
+                }));
+                const __VLS_2 = __VLS_1({
+                    ...{ class: "spin" },
+                }, ...__VLS_functionalComponentArgsRest(__VLS_1));
+                /** @type {__VLS_StyleScopedClasses['spin']} */ ;
+            }
+            __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
+            (__VLS_ctx.pageErrors.has(pageIndex + 1) ? '本页加载失败' : '正在加载本页');
+            if (__VLS_ctx.pageErrors.has(pageIndex + 1)) {
+                __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+                    ...{ onClick: (...[$event]) => {
+                            if (!!(__VLS_ctx.loadError && __VLS_ctx.pageUrls.every(url => !url)))
+                                throw 0;
+                            if (!!(url))
+                                throw 0;
+                            if (!(__VLS_ctx.pageErrors.has(pageIndex + 1)))
+                                throw 0;
+                            return (__VLS_ctx.loadPage(pageIndex + 1, __VLS_ctx.loadGeneration));
+                            // @ts-ignore
+                            [loadError, loadError, pageUrls, pageUrls, paper, loadingPages, pageErrors, pageErrors, loadPage, loadGeneration,];
+                        } },
+                });
+            }
+        }
         for (const [item] of __VLS_vFor((__VLS_ctx.regionsForPage(pageIndex + 1)))) {
             __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
                 ...{ onPointerdown: (...[$event]) => {
-                        if (!!(__VLS_ctx.loading))
-                            throw 0;
-                        if (!!(__VLS_ctx.loadError))
+                        if (!!(__VLS_ctx.loadError && __VLS_ctx.pageUrls.every(url => !url)))
                             throw 0;
                         return (__VLS_ctx.startAdjust($event, item.index, 'move'));
                         // @ts-ignore
-                        [loading, loadError, loadError, pageUrls, paper, regionsForPage, startAdjust,];
+                        [regionsForPage, startAdjust,];
                     } },
                 key: (item.index),
                 ...{ class: "paper-question-region" },
@@ -178,9 +245,7 @@ else {
             const __VLS_7 = __VLS_6({}, ...__VLS_functionalComponentArgsRest(__VLS_6));
             __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
                 ...{ onClick: (...[$event]) => {
-                        if (!!(__VLS_ctx.loading))
-                            throw 0;
-                        if (!!(__VLS_ctx.loadError))
+                        if (!!(__VLS_ctx.loadError && __VLS_ctx.pageUrls.every(url => !url)))
                             throw 0;
                         return (__VLS_ctx.emit('recognize'));
                         // @ts-ignore
@@ -198,9 +263,7 @@ else {
             for (const [handle] of __VLS_vFor((__VLS_ctx.handles))) {
                 __VLS_asFunctionalElement1(__VLS_intrinsics.i, __VLS_intrinsics.i)({
                     ...{ onPointerdown: (...[$event]) => {
-                            if (!!(__VLS_ctx.loading))
-                                throw 0;
-                            if (!!(__VLS_ctx.loadError))
+                            if (!!(__VLS_ctx.loadError && __VLS_ctx.pageUrls.every(url => !url)))
                                 throw 0;
                             return (__VLS_ctx.startAdjust($event, item.index, handle));
                             // @ts-ignore

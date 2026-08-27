@@ -8,7 +8,7 @@ const props=defineProps<{question:Question}>()
 const blocks=computed(()=>props.question.presentationLayout?.blocks||[])
 const hasLayout=computed(()=>blocks.value.length>0)
 const previewHeight=computed(()=>Math.max(220,Math.min(520,props.question.presentationLayout?.height||360)))
-const images=computed(()=>props.question.figureUrls?.length?props.question.figureUrls:(props.question.cropUrls?.slice(0,1)||[]))
+const images=computed(()=>props.question.figureUrls||[])
 function blockStyle(block:PresentationBlock){return{left:`${block.x}%`,top:`${block.y}%`,width:`${block.width}%`,height:`${block.height||15}%`}}
 </script>
 
