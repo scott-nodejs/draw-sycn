@@ -589,7 +589,7 @@ public class PaperProcessingService {
   private List<Path> sourceFiles(String paperId) throws Exception {
     String manifestValue = jdbc.queryForObject("SELECT pdf_object_key FROM teaching_paper WHERE id=?", String.class, paperId);
     Path manifest = Paths.get(manifestValue); JsonNode sources = json.readTree(manifest.toFile()); List<Path> files = new ArrayList<>();
-    if (sources.isArray()) for (JsonNode source : sources) { Path file = manifest.getParent().resolve(source.path("name").asText()).normalize(); if (file.startsWith(manifest.getParent()) && !Files.isRegularFile(file) && "original.pdf".equals(source.path("name").asText())) cloudStorage.restoreOriginal(paperId,file); if (!file.startsWith(manifest.getParent()) || !Files.isRegularFile(file)) throw new ProviderException("SOURCE_FILES_MISSING", "试卷源文件不存在"); files.add(file); }
+    if (sources.isArray()) for (JsonNode source : sources) { Path file = manifest.getParent().resolve(source.path("name").asText()).normalize(); if (file.startsWith(manifest.getParent()) && !Files.isRegularFile(file) && source.path("name").asText().endsWith(".pdf")) cloudStorage.restoreOriginal(paperId,file); if (!file.startsWith(manifest.getParent()) || !Files.isRegularFile(file)) throw new ProviderException("SOURCE_FILES_MISSING", "试卷源文件不存在"); files.add(file); }
     return files;
   }
   private List<Path> normalizedPageFiles(String paperId) {

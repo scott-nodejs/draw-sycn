@@ -51,14 +51,16 @@ public class TeachingPlatformService {
   private final QuestionReprocessingService questionReprocessing;
   private final PaperPagePreviewService pagePreviews;
   private final QiniuPaperStorageService cloudStorage;
+  private final LibreOfficeDocumentConverter documentConverter;
 
-  public TeachingPlatformService(JdbcTemplate jdbc, ObjectMapper objectMapper, WhiteboardProperties properties, QuestionReprocessingService questionReprocessing, PaperPagePreviewService pagePreviews, QiniuPaperStorageService cloudStorage) {
+  public TeachingPlatformService(JdbcTemplate jdbc, ObjectMapper objectMapper, WhiteboardProperties properties, QuestionReprocessingService questionReprocessing, PaperPagePreviewService pagePreviews, QiniuPaperStorageService cloudStorage, LibreOfficeDocumentConverter documentConverter) {
     this.jdbc = jdbc;
     this.objectMapper = objectMapper;
     this.properties = properties;
     this.questionReprocessing = questionReprocessing;
     this.pagePreviews = pagePreviews;
     this.cloudStorage = cloudStorage;
+    this.documentConverter = documentConverter;
   }
 
   public List<Map<String, Object>> listPapers(String organizationId, String userId) {
@@ -131,14 +133,14 @@ public class TeachingPlatformService {
 
   private Map<String, Object> createDocumentBatchSources(List<? extends DocumentSourceFile> files, String title, String subject, String grade,
       String organizationId, String creatorId, String sourceType) throws IOException {
-    if (files == null || files.isEmpty() || files.stream().allMatch(DocumentSourceFile::isEmpty)) throw badRequest("请选择 PDF 或图片文件");
+    if (files == null || files.isEmpty() || files.stream().allMatch(DocumentSourceFile::isEmpty)) throw badRequest("请选择 PDF、Word 或图片文件");
     List<DocumentSourceFile> sourceFiles = new ArrayList<>(files);
     sourceFiles.removeIf(DocumentSourceFile::isEmpty);
     if (sourceFiles.size() > 30) throw badRequest("图片试卷最多支持 30 张");
-    boolean hasPdf = sourceFiles.stream().anyMatch(this::isPdf);
+    boolean hasPdf = sourceFiles.stream().anyMatch(file -> isPdf(file) || isWord(file));
     boolean hasImage = sourceFiles.stream().anyMatch(this::isImage);
-    if (sourceFiles.stream().anyMatch(file -> !isPdf(file) && !isImage(file))) throw badRequest("仅支持 PDF、JPG、PNG、WEBP 文件");
-    if (hasPdf && (hasImage || sourceFiles.size() > 1)) throw badRequest("PDF 与图片不能混合上传，且每次只能上传一个 PDF");
+    if (sourceFiles.stream().anyMatch(file -> !isPdf(file) && !isWord(file) && !isImage(file))) throw badRequest("仅支持 PDF、DOC、DOCX、JPG、PNG、WEBP 文件");
+    if (hasPdf && (hasImage || sourceFiles.size() > 1)) throw badRequest("PDF、Word 与图片不能混合上传，且每次只能上传一个文档");
     long totalSize = sourceFiles.stream().mapToLong(DocumentSourceFile::getSize).sum();
     if (totalSize > 100L * 1024L * 1024L) throw badRequest("上传文件总大小不能超过 100 MB");
 
@@ -148,14 +150,16 @@ public class TeachingPlatformService {
     List<Map<String, Object>> sources = new ArrayList<>();
     for (int index = 0; index < sourceFiles.size(); index++) {
       DocumentSourceFile file = sourceFiles.get(index);
-      String extension = isPdf(file) ? "pdf" : imageExtension(file);
-      String storedName = isPdf(file) ? "original.pdf" : String.format("page-%03d.%s", index + 1, extension);
-      Path sourcePath = directory.resolve(storedName).normalize();
+      boolean word = isWord(file); String extension = isPdf(file) ? "pdf" : word ? wordExtension(file) : imageExtension(file);
+      String archiveName = isPdf(file) ? "original.pdf" : word ? "original." + extension : String.format("page-%03d.%s", index + 1, extension);
+      Path sourcePath = directory.resolve(archiveName).normalize();
       if (!sourcePath.startsWith(directory)) throw badRequest("非法文件路径");
       try (InputStream input = file.getInputStream()) {
         Files.copy(input, sourcePath, StandardCopyOption.REPLACE_EXISTING);
       }
-      Map<String, Object> source = new LinkedHashMap<>(); source.put("name", storedName); source.put("originalName", file.getOriginalFilename()); source.put("contentType", file.getContentType()); source.put("size", file.getSize()); sources.add(source);
+      String storedName = archiveName;
+      if (word) { storedName = "converted.pdf"; try { documentConverter.convertToPdf(sourcePath, directory.resolve(storedName)); } catch (Exception error) { throw badRequest("Word 转 PDF 失败：" + error.getMessage()); } }
+      Map<String, Object> source = new LinkedHashMap<>(); source.put("name", storedName); if (word) source.put("originalSourceName", archiveName); source.put("originalName", file.getOriginalFilename()); source.put("contentType", word ? "application/pdf" : file.getContentType()); source.put("size", file.getSize()); sources.add(source);
     }
     Path manifestPath = directory.resolve("source-manifest.json");
     objectMapper.writeValue(manifestPath.toFile(), sources);
@@ -208,7 +212,7 @@ public class TeachingPlatformService {
         }
         fileCount++;
         if (fileCount > 200) throw badRequest("ZIP 内文件数量不能超过 200 个");
-        String group = zipGroupName(entryName, lower.endsWith(".pdf"));
+        String group = zipGroupName(entryName, lower.endsWith(".pdf") || lower.endsWith(".doc") || lower.endsWith(".docx"));
         groups.computeIfAbsent(group, key -> new ArrayList<>())
           .add(new ZipDocumentFile(entryName, contentTypeForName(lower), bytes.toByteArray()));
       }
@@ -229,13 +233,14 @@ public class TeachingPlatformService {
   }
 
   private boolean isSupportedZipDocument(String lowerName) {
-    return lowerName.endsWith(".pdf") || lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg")
+    return lowerName.endsWith(".pdf") || lowerName.endsWith(".doc") || lowerName.endsWith(".docx") || lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg")
       || lowerName.endsWith(".png") || lowerName.endsWith(".webp");
   }
 
-  private String zipGroupName(String entryName, boolean pdf) {
-    if (pdf) {
-      String withoutExtension = entryName.substring(0, entryName.length() - 4);
+  private String zipGroupName(String entryName, boolean document) {
+    if (document) {
+      int dot = entryName.lastIndexOf('.');
+      String withoutExtension = dot > 0 ? entryName.substring(0, dot) : entryName;
       return withoutExtension.replace('/', ' ');
     }
     int slash = entryName.indexOf('/');
@@ -250,6 +255,8 @@ public class TeachingPlatformService {
 
   private String contentTypeForName(String lowerName) {
     if (lowerName.endsWith(".pdf")) return "application/pdf";
+    if (lowerName.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    if (lowerName.endsWith(".doc")) return "application/msword";
     if (lowerName.endsWith(".png")) return "image/png";
     if (lowerName.endsWith(".webp")) return "image/webp";
     return "image/jpeg";
@@ -271,6 +278,14 @@ public class TeachingPlatformService {
     String name = safe(file.getOriginalFilename()).toLowerCase();
     return type.startsWith("image/") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png") || name.endsWith(".webp");
   }
+
+  private boolean isWord(DocumentSourceFile file) {
+    String type = safe(file.getContentType()).toLowerCase();
+    String name = safe(file.getOriginalFilename()).toLowerCase();
+    return "application/msword".equals(type) || "application/vnd.openxmlformats-officedocument.wordprocessingml.document".equals(type) || name.endsWith(".doc") || name.endsWith(".docx");
+  }
+
+  private String wordExtension(DocumentSourceFile file) { return safe(file.getOriginalFilename()).toLowerCase().endsWith(".doc") ? "doc" : "docx"; }
 
   private String imageExtension(DocumentSourceFile file) {
     String name = safe(file.getOriginalFilename()).toLowerCase();

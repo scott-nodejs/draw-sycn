@@ -19,10 +19,10 @@ const setTab = ref('mine'), editingSetId = ref(null);
 const knowledgePoints = ref([]), selectedKnowledgePoint = ref(''), questionSearch = ref(''), questionType = ref(''), questionDifficulty = ref(''), editingKnowledgeQuestion = ref(null), newKnowledgeName = ref('');
 const expandedKnowledge = ref(new Set());
 const pageSize = 10, paperPageSize = 9, paperPage = ref(1), taskPage = ref(1), questionPage = ref(1), paperSearch = ref(''), paperFilter = ref('all'), taskFilter = ref('all');
-const reviewPaperCount = computed(() => papers.value.filter(p => p.status === 'review').length);
-const filteredPapers = computed(() => papers.value.filter(p => (paperFilter.value === 'all' || p.status === 'review') && (!paperSearch.value || `${p.title} ${p.grade} ${p.subject}`.toLowerCase().includes(paperSearch.value.toLowerCase()))));
-const taskCounts = computed(() => ({ running: papers.value.filter(p => p.status === 'processing' || p.status === 'queued').length, failed: papers.value.filter(p => p.status === 'failed').length, completed: papers.value.filter(p => !['processing', 'queued', 'failed'].includes(p.status)).length }));
-const filteredTasks = computed(() => papers.value.filter(p => taskFilter.value === 'all' || (taskFilter.value === 'running' && (p.status === 'processing' || p.status === 'queued')) || (taskFilter.value === 'failed' && p.status === 'failed') || (taskFilter.value === 'completed' && !['processing', 'queued', 'failed'].includes(p.status))));
+const paperCounts = computed(() => ({ queued: papers.value.filter(p => p.status === 'queued').length, processing: papers.value.filter(p => p.status === 'processing').length, review: papers.value.filter(p => p.status === 'review').length }));
+const filteredPapers = computed(() => papers.value.filter(p => (paperFilter.value === 'all' || p.status === paperFilter.value) && (!paperSearch.value || `${p.title} ${p.grade} ${p.subject}`.toLowerCase().includes(paperSearch.value.toLowerCase()))));
+const taskCounts = computed(() => ({ queued: papers.value.filter(p => p.status === 'queued').length, running: papers.value.filter(p => p.status === 'processing').length, failed: papers.value.filter(p => p.status === 'failed').length, completed: papers.value.filter(p => !['processing', 'queued', 'failed'].includes(p.status)).length }));
+const filteredTasks = computed(() => papers.value.filter(p => taskFilter.value === 'all' || (taskFilter.value === 'queued' && p.status === 'queued') || (taskFilter.value === 'running' && p.status === 'processing') || (taskFilter.value === 'failed' && p.status === 'failed') || (taskFilter.value === 'completed' && !['processing', 'queued', 'failed'].includes(p.status))));
 const filteredQuestions = computed(() => confirmedQuestions.value.filter(q => (!selectedKnowledgePoint.value || q.knowledgePointIds?.includes(selectedKnowledgePoint.value)) && (!questionSearch.value || `${q.stem} ${q.sourceTitle || ''}`.toLowerCase().includes(questionSearch.value.toLowerCase())) && (!questionType.value || q.type === questionType.value) && (!questionDifficulty.value || q.difficulty === questionDifficulty.value)));
 const pageCount = (total, size = pageSize) => Math.max(1, Math.ceil(total / size));
 const pageItems = (items, currentPage, size = pageSize) => items.slice((currentPage - 1) * size, currentPage * size);
@@ -51,7 +51,7 @@ async function load() { await Promise.all([api.papers().then(v => papers.value =
 async function toggleQuestionKnowledge(q, pointId) { const ids = new Set(q.knowledgePointIds || []); ids.has(pointId) ? ids.delete(pointId) : ids.add(pointId); await run(async () => { const result = await api.assignKnowledgePoints(q.id, [...ids]); q.knowledgePointIds = result.knowledgePointIds; knowledgePoints.value = await api.knowledgePoints(); notify('知识点已更新'); }); }
 async function createKnowledgePoint() { const name = newKnowledgeName.value.trim(); if (!name)
     return; await run(async () => { const parent = knowledgePoints.value.find(item => item.id === selectedKnowledgePoint.value); await api.createKnowledgePoint({ name, subject: parent?.subject || confirmedQuestions.value[0]?.sourceSubject || '数学', grade: parent?.grade || confirmedQuestions.value[0]?.sourceGrade || '', parentId: parent?.id }); newKnowledgeName.value = ''; knowledgePoints.value = await api.knowledgePoints(); notify('知识点已创建'); }); }
-async function openPaper(p) { selectedPaper.value = p; page.value = 'review'; processingDetail.value = null; regionEditing.value = false; if (p.status === 'processing') {
+async function openPaper(p) { selectedPaper.value = p; page.value = 'review'; processingDetail.value = null; regionEditing.value = false; if (p.status === 'processing' || p.status === 'queued') {
     questions.value = [];
     processingDetail.value = await api.processing(p.id);
     return;
@@ -922,9 +922,28 @@ else {
                         throw 0;
                     if (!(__VLS_ctx.page === 'tasks'))
                         throw 0;
-                    return (__VLS_ctx.taskFilter = 'running');
+                    return (__VLS_ctx.taskFilter = 'queued');
                     // @ts-ignore
                     [taskFilter, taskFilter, papers,];
+                } },
+            ...{ class: ({ active: __VLS_ctx.taskFilter === 'queued' }) },
+        });
+        /** @type {__VLS_StyleScopedClasses['active']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
+        (__VLS_ctx.taskCounts.queued);
+        __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
+                        throw 0;
+                    if (!!(!__VLS_ctx.current))
+                        throw 0;
+                    if (!!(__VLS_ctx.page === 'dashboard'))
+                        throw 0;
+                    if (!(__VLS_ctx.page === 'tasks'))
+                        throw 0;
+                    return (__VLS_ctx.taskFilter = 'running');
+                    // @ts-ignore
+                    [taskCounts, taskFilter, taskFilter,];
                 } },
             ...{ class: ({ active: __VLS_ctx.taskFilter === 'running' }) },
         });
@@ -985,15 +1004,18 @@ else {
                 'data-status': (p.status),
             });
             /** @type {__VLS_StyleScopedClasses['task-badge']} */ ;
-            (p.status === 'processing' ? '试卷解析' : p.status === 'failed' ? '解析失败' : '内容整理');
+            (p.status === 'queued' ? '排队等待' : p.status === 'processing' ? '试卷解析' : p.status === 'failed' ? '解析失败' : '内容整理');
             __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
                 ...{ class: "task-main" },
             });
             /** @type {__VLS_StyleScopedClasses['task-main']} */ ;
             __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
-            (p.status === 'processing' ? '解析试卷：' : p.status === 'failed' ? '解析失败：' : '整理完成：');
+            (p.status === 'queued' ? '排队解析：' : p.status === 'processing' ? '解析试卷：' : p.status === 'failed' ? '解析失败：' : '整理完成：');
             (p.title);
-            if (p.status === 'processing') {
+            if (p.status === 'queued') {
+                __VLS_asFunctionalElement1(__VLS_intrinsics.small, __VLS_intrinsics.small)({});
+            }
+            else if (p.status === 'processing') {
                 __VLS_asFunctionalElement1(__VLS_intrinsics.small, __VLS_intrinsics.small)({});
                 (p.progress);
             }
@@ -1019,7 +1041,7 @@ else {
             });
             /** @type {__VLS_StyleScopedClasses['task-end']} */ ;
             __VLS_asFunctionalElement1(__VLS_intrinsics.small, __VLS_intrinsics.small)({});
-            (p.status === 'processing' ? '处理中' : p.status === 'failed' ? '失败' : '已完成');
+            (p.status === 'queued' ? '排队中' : p.status === 'processing' ? '处理中' : p.status === 'failed' ? '失败' : '已完成');
             (p.progress);
             if (p.status === 'failed') {
                 __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
@@ -1043,6 +1065,13 @@ else {
                 });
                 /** @type {__VLS_StyleScopedClasses['primary']} */ ;
             }
+            else if (p.status === 'queued') {
+                __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+                    ...{ class: "ghost" },
+                    disabled: true,
+                });
+                /** @type {__VLS_StyleScopedClasses['ghost']} */ ;
+            }
             else {
                 __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
                     ...{ onClick: (...[$event]) => {
@@ -1055,6 +1084,8 @@ else {
                             if (!(__VLS_ctx.page === 'tasks'))
                                 throw 0;
                             if (!!(p.status === 'failed'))
+                                throw 0;
+                            if (!!(p.status === 'queued'))
                                 throw 0;
                             return (__VLS_ctx.openPaper(p));
                             // @ts-ignore
@@ -1254,16 +1285,60 @@ else {
                         throw 0;
                     if (!(__VLS_ctx.page === 'papers'))
                         throw 0;
-                    return (__VLS_ctx.paperFilter = 'review');
+                    return (__VLS_ctx.paperFilter = 'queued');
                     // @ts-ignore
                     [papers, paperFilter, paperFilter,];
+                } },
+            ...{ class: "filter" },
+            ...{ class: ({ active: __VLS_ctx.paperFilter === 'queued' }) },
+        });
+        /** @type {__VLS_StyleScopedClasses['filter']} */ ;
+        /** @type {__VLS_StyleScopedClasses['active']} */ ;
+        (__VLS_ctx.paperCounts.queued);
+        __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
+                        throw 0;
+                    if (!!(!__VLS_ctx.current))
+                        throw 0;
+                    if (!!(__VLS_ctx.page === 'dashboard'))
+                        throw 0;
+                    if (!!(__VLS_ctx.page === 'tasks'))
+                        throw 0;
+                    if (!(__VLS_ctx.page === 'papers'))
+                        throw 0;
+                    return (__VLS_ctx.paperFilter = 'processing');
+                    // @ts-ignore
+                    [paperFilter, paperFilter, paperCounts,];
+                } },
+            ...{ class: "filter" },
+            ...{ class: ({ active: __VLS_ctx.paperFilter === 'processing' }) },
+        });
+        /** @type {__VLS_StyleScopedClasses['filter']} */ ;
+        /** @type {__VLS_StyleScopedClasses['active']} */ ;
+        (__VLS_ctx.paperCounts.processing);
+        __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
+                        throw 0;
+                    if (!!(!__VLS_ctx.current))
+                        throw 0;
+                    if (!!(__VLS_ctx.page === 'dashboard'))
+                        throw 0;
+                    if (!!(__VLS_ctx.page === 'tasks'))
+                        throw 0;
+                    if (!(__VLS_ctx.page === 'papers'))
+                        throw 0;
+                    return (__VLS_ctx.paperFilter = 'review');
+                    // @ts-ignore
+                    [paperFilter, paperFilter, paperCounts,];
                 } },
             ...{ class: "filter" },
             ...{ class: ({ active: __VLS_ctx.paperFilter === 'review' }) },
         });
         /** @type {__VLS_StyleScopedClasses['filter']} */ ;
         /** @type {__VLS_StyleScopedClasses['active']} */ ;
-        (__VLS_ctx.reviewPaperCount);
+        (__VLS_ctx.paperCounts.review);
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
             ...{ class: "paper-grid" },
         });
@@ -1283,7 +1358,7 @@ else {
                             throw 0;
                         return (__VLS_ctx.openPaper(p));
                         // @ts-ignore
-                        [openPaper, paperFilter, reviewPaperCount, pagedPapers,];
+                        [openPaper, paperFilter, paperCounts, pagedPapers,];
                     } },
                 key: (p.id),
                 ...{ class: "paper-card" },
@@ -1318,7 +1393,7 @@ else {
                 'data-status': (p.status),
             });
             /** @type {__VLS_StyleScopedClasses['status']} */ ;
-            (p.status === 'processing' ? '解析中' : p.status === 'review' ? '待校对' : '可发行');
+            (p.status === 'queued' ? '排队中' : p.status === 'processing' ? '解析中' : p.status === 'review' ? '待校对' : '可发行');
             __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
                 ...{ class: "paper-meta" },
             });
@@ -1366,7 +1441,7 @@ else {
                 ...{ style: ({ width: p.progress + '%' }) },
             });
             __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({});
-            (p.status === 'processing' ? '查看解析进度' : p.status === 'ready' ? '查看已校对试题' : '进入校对');
+            (p.status === 'queued' ? '等待解析' : p.status === 'processing' ? '查看解析进度' : p.status === 'ready' ? '查看已校对试题' : '进入校对');
             let __VLS_130;
             /** @ts-ignore @type { | typeof __VLS_components.ChevronRight} */
             ChevronRight;
@@ -1522,7 +1597,7 @@ else {
         __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
             ...{ onClick: (__VLS_ctx.reparsePaper) },
             ...{ class: "reparse-button" },
-            disabled: (__VLS_ctx.busy || __VLS_ctx.selectedPaper?.status === 'processing'),
+            disabled: (__VLS_ctx.busy || __VLS_ctx.selectedPaper?.status === 'processing' || __VLS_ctx.selectedPaper?.status === 'queued'),
         });
         /** @type {__VLS_StyleScopedClasses['reparse-button']} */ ;
         let __VLS_150;
@@ -1532,7 +1607,7 @@ else {
         const __VLS_151 = __VLS_asFunctionalComponent1(__VLS_150, new __VLS_150({}));
         const __VLS_152 = __VLS_151({}, ...__VLS_functionalComponentArgsRest(__VLS_151));
         (__VLS_ctx.busy ? '提交中' : '重新解析');
-        if (__VLS_ctx.selectedPaper?.status === 'processing') {
+        if (__VLS_ctx.selectedPaper?.status === 'processing' || __VLS_ctx.selectedPaper?.status === 'queued') {
             __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
                 ...{ class: "processing" },
             });
@@ -1548,8 +1623,9 @@ else {
             const __VLS_156 = __VLS_asFunctionalComponent1(__VLS_155, new __VLS_155({}));
             const __VLS_157 = __VLS_156({}, ...__VLS_functionalComponentArgsRest(__VLS_156));
             __VLS_asFunctionalElement1(__VLS_intrinsics.h2, __VLS_intrinsics.h2)({});
+            (__VLS_ctx.selectedPaper.status === 'queued' ? '任务正在排队等待' : 'AI 正在识别并拆分试题');
             __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({});
-            (__VLS_ctx.selectedPaper.progress);
+            (__VLS_ctx.selectedPaper.status === 'queued' ? '当前并发解析名额已满，任务开始后会自动更新进度。' : `当前进度 ${__VLS_ctx.selectedPaper.progress}%，解析完成后即可逐题校对。`);
             __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
                 ...{ class: "big-meter" },
             });
@@ -1595,11 +1671,11 @@ else {
                                 throw 0;
                             if (!(__VLS_ctx.page === 'review'))
                                 throw 0;
-                            if (!!(__VLS_ctx.selectedPaper?.status === 'processing'))
+                            if (!!(__VLS_ctx.selectedPaper?.status === 'processing' || __VLS_ctx.selectedPaper?.status === 'queued'))
                                 throw 0;
                             return (__VLS_ctx.selectedQuestion = { ...q });
                             // @ts-ignore
-                            [busy, busy, busy, selectedPaper, selectedPaper, selectedPaper, selectedPaper, selectedPaper, selectedPaper, selectedPaper, refreshPaper, refreshPaper, reparsePaper, questions, questions, selectedQuestion,];
+                            [busy, busy, busy, selectedPaper, selectedPaper, selectedPaper, selectedPaper, selectedPaper, selectedPaper, selectedPaper, selectedPaper, selectedPaper, selectedPaper, selectedPaper, refreshPaper, refreshPaper, reparsePaper, questions, questions, selectedQuestion,];
                         } },
                     key: (q.id),
                     ...{ class: ({ active: __VLS_ctx.selectedQuestion?.id === q.id }) },
@@ -2711,7 +2787,7 @@ else {
                     [files,];
                 } },
             type: "file",
-            accept: "application/pdf,image/*,.zip,application/zip,application/x-zip-compressed",
+            accept: "application/pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*,.zip,application/zip,application/x-zip-compressed",
             multiple: true,
         });
         if (__VLS_ctx.files.length) {
@@ -2890,7 +2966,7 @@ else {
         [busy, busy, saveQuestion,];
         var __VLS_322;
     }
-    if (__VLS_ctx.page === 'review' && __VLS_ctx.selectedPaper?.status === 'processing' && __VLS_ctx.processingDetail) {
+    if (__VLS_ctx.page === 'review' && (__VLS_ctx.selectedPaper?.status === 'processing' || __VLS_ctx.selectedPaper?.status === 'queued') && __VLS_ctx.processingDetail) {
         let __VLS_335;
         /** @ts-ignore @type { | typeof __VLS_components.Teleport | typeof __VLS_components.Teleport} */
         Teleport;
@@ -2923,7 +2999,7 @@ else {
             __VLS_asFunctionalElement1(__VLS_intrinsics.em, __VLS_intrinsics.em)({});
             (item.status === 'completed' ? '完成' : item.status === 'failed' ? '失败' : '进行中');
             // @ts-ignore
-            [page, selectedPaper, processingDetail, processingDetail,];
+            [page, selectedPaper, selectedPaper, processingDetail, processingDetail,];
         }
         if (__VLS_ctx.processingDetail.pages.length) {
             __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({

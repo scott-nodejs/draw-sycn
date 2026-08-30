@@ -45,17 +45,22 @@ public class QiniuPaperStorageService {
         upload(preview, key);
         jdbc.update("UPDATE paper_page SET preview_cloud_key=?,updated_at=NOW() WHERE paper_id=? AND page_number=?", key, paperId, number);
       }
-      Path original = manifest.getParent().resolve("original.pdf").normalize();
+      String manifestJson = Files.isRegularFile(manifest) ? new String(Files.readAllBytes(manifest), java.nio.charset.StandardCharsets.UTF_8) : "";
+      String processingName = manifestJson.contains("\"converted.pdf\"") ? "converted.pdf" : "original.pdf";
+      Path original = manifest.getParent().resolve(processingName).normalize();
       String sourceKey = String.valueOf(paper.get("source_cloud_key"));
-      boolean pdfSource = Files.isRegularFile(manifest) && new String(Files.readAllBytes(manifest), java.nio.charset.StandardCharsets.UTF_8).contains("\"original.pdf\"");
+      boolean pdfSource = manifestJson.contains("\"original.pdf\"") || manifestJson.contains("\"converted.pdf\"");
       if ((sourceKey == null || sourceKey.trim().isEmpty() || "null".equals(sourceKey)) && Files.isRegularFile(original)) {
-        sourceKey = "papers/" + paperId + "/source/original.pdf";
+        sourceKey = "papers/" + paperId + "/source/" + processingName;
         upload(original, sourceKey);
         jdbc.update("UPDATE teaching_paper SET source_cloud_key=?,updated_at=NOW() WHERE id=?", sourceKey, paperId);
       }
       if (pdfSource && (sourceKey == null || sourceKey.trim().isEmpty() || "null".equals(sourceKey))) throw new IllegalStateException("本地源 PDF 不存在，无法归档到七牛");
+      Path originalDocx = manifest.getParent().resolve("original.docx"), originalDoc = manifest.getParent().resolve("original.doc");
+      if (Files.isRegularFile(originalDocx)) upload(originalDocx, "papers/" + paperId + "/source/original.docx");
+      if (Files.isRegularFile(originalDoc)) upload(originalDoc, "papers/" + paperId + "/source/original.doc");
       jdbc.update("UPDATE teaching_paper SET cloud_status='done',cloud_error='',updated_at=NOW() WHERE id=?", paperId);
-      if (sourceKey != null && !sourceKey.trim().isEmpty() && !"null".equals(sourceKey)) Files.deleteIfExists(original);
+      if (sourceKey != null && !sourceKey.trim().isEmpty() && !"null".equals(sourceKey)) { Files.deleteIfExists(original); Files.deleteIfExists(originalDocx); Files.deleteIfExists(originalDoc); }
     } catch (Exception error) {
       jdbc.update("UPDATE teaching_paper SET cloud_status='failed',cloud_error=?,updated_at=NOW() WHERE id=?", limit(error.getMessage()), paperId);
       throw error;
