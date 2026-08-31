@@ -34,7 +34,7 @@ public class DeepseekClient {
 
   public JsonNode structureQuestions(String markdown, JsonNode layoutBlocks, String subject, String grade) throws Exception {
     if (apiKey.trim().isEmpty()) throw new ProviderException("DEEPSEEK_NOT_CONFIGURED", "未配置 DEEPSEEK_API_KEY");
-    String system = "你是商业教学平台的试题原文结构化引擎。只根据 OCR Markdown 与版面块识别题号、题型、题干和选项，禁止解题、推导答案、生成解析或补造原文不存在的信息。必须输出 JSON：{\"questions\":[{\"number\":1,\"type\":\"选择题\",\"stem\":\"\",\"options\":[],\"answer\":\"\",\"analysis\":\"\",\"points\":0,\"confidence\":90,\"difficulty\":\"中\",\"warnings\":[]}]}。只有原文明确印有答案或解析时才原样提取到 answer 或 analysis，否则必须留空；difficulty 必须根据题目表面呈现的知识点综合程度、步骤数量和计算量判断为高、中、低，但不得为判断难度而求解题目。不需要生成页面坐标或裁切区域，这些信息由后端版面算法生成。题型只能是选择题、填空题、解答题。字段内容不要使用 ** 加粗包裹；数学公式保留 $...$ LaTeX，LaTeX 命令使用标准单个反斜杠，禁止二次转义。";
+    String system = "你是商业教学平台的试题原文结构化引擎。只根据 OCR Markdown 与版面块识别题号、题型、题干和选项，禁止解题、推导答案、生成解析或补造原文不存在的信息。必须输出 json 对象（JSON）：{\"questions\":[{\"number\":1,\"type\":\"选择题\",\"stem\":\"\",\"options\":[],\"answer\":\"\",\"analysis\":\"\",\"points\":0,\"confidence\":90,\"difficulty\":\"中\",\"warnings\":[]}]}。只有原文明确印有答案或解析时才原样提取到 answer 或 analysis，否则必须留空；difficulty 必须根据题目表面呈现的知识点综合程度、步骤数量和计算量判断为高、中、低，但不得为判断难度而求解题目。不需要生成页面坐标或裁切区域，这些信息由后端版面算法生成。题型只能是选择题、填空题、解答题。字段内容不要使用 ** 加粗包裹；数学公式保留 $...$ LaTeX，LaTeX 命令使用标准单个反斜杠，禁止二次转义。";
     String user = "年级：" + grade + "\n学科：" + subject + "\nOCR Markdown：\n" + markdown + "\n版面块（pageNumber/bbox/text）：\n" + json.writeValueAsString(layoutBlocks);
     ObjectNode result = (ObjectNode) requestJson(system, user, 6144);
     validate(result);
@@ -85,7 +85,7 @@ public class DeepseekClient {
 
   public JsonNode recognizeQuestionCrop(String markdown, int number, String type) throws Exception {
     if (apiKey.trim().isEmpty()) throw new ProviderException("DEEPSEEK_NOT_CONFIGURED", "DEEPSEEK_API_KEY is not configured");
-    String system = "你是试卷单题原文识别校正引擎。输入内容来自老师人工框选后的单题裁图。只识别该题，禁止解题、推导答案、生成解析或补造信息。输出 JSON：" +
+    String system = "你是试卷单题原文识别校正引擎。输入内容来自老师人工框选后的单题裁图。只识别该题，禁止解题、推导答案、生成解析或补造信息。输出 json 对象（JSON）：" +
       "{\"question\":{\"stem\":\"\",\"options\":[],\"answer\":\"\",\"analysis\":\"\",\"confidence\":90,\"difficulty\":\"中\"}}。只有图片原文明确包含答案或解析时才原样提取，否则 answer 和 analysis 必须留空；difficulty 根据题目表面呈现的知识点综合程度、步骤数量和计算量判断为高、中、低，但不得求解题目。字段内容不要使用 ** 加粗包裹；数学公式保留 $...$ LaTeX，LaTeX 命令使用标准单个反斜杠，禁止二次转义。" +
       "题干不要包含题号、章节标题、下一题内容。";
     String user = "题号：" + number + "\n题型：" + type + "\nMinerU OCR：\n" + markdown;
@@ -101,7 +101,7 @@ public class DeepseekClient {
 
   public JsonNode classifyKnowledgePoints(JsonNode questions, JsonNode candidates, String subject, String grade) throws Exception {
     if (apiKey.trim().isEmpty()) throw new ProviderException("DEEPSEEK_NOT_CONFIGURED", "未配置 DEEPSEEK_API_KEY");
-    String system = "你是教学试题知识点分类器。只能从候选知识点中选择，不得创造 ID。每题选择 1 到 3 个最相关的末级知识点；优先选择直接考查的知识点，不要仅凭题目中的表面词汇判断。输出 JSON：" +
+    String system = "你是教学试题知识点分类器。只能从候选知识点中选择，不得创造 ID。每题选择 1 到 3 个最相关的末级知识点；优先选择直接考查的知识点，不要仅凭题目中的表面词汇判断。输出 json 对象（JSON）：" +
       "{\"matches\":[{\"number\":1,\"knowledgePoints\":[{\"id\":\"\",\"confidence\":90,\"reason\":\"\"}]}]}。" +
       "confidence 为 0 到 100 的整数，reason 不超过 80 个汉字。无法可靠判断时 knowledgePoints 返回空数组。";
     String user = "学科：" + subject + "\n年级：" + grade + "\n题目：\n" + json.writeValueAsString(questions) +
