@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { PresentationBlock,Question } from '../api'
+import { optionText,type PresentationBlock,type Question } from '../api'
 import AuthenticatedImage from './AuthenticatedImage.vue'
 import MathPreview from './MathPreview.vue'
 
@@ -17,14 +17,14 @@ function blockStyle(block:PresentationBlock){return{left:`${block.x}%`,top:`${bl
  <div v-if="hasLayout" class="final-layout" :style="{height:`${previewHeight}px`}">
   <div v-for="block in blocks" :key="block.id" class="final-block" :data-kind="block.kind" :style="blockStyle(block)">
    <MathPreview v-if="block.kind==='stem'" :text="question.stem"/>
-   <div v-else-if="block.kind==='options'" class="final-options"><span v-for="(option,index) in question.options" :key="index"><b>{{String.fromCharCode(65+index)}}.</b><MathPreview :text="option"/></span></div>
+   <div v-else-if="block.kind==='options'" class="final-options"><span v-for="(option,index) in question.options" :key="index"><b>{{String.fromCharCode(65+index)}}.</b><MathPreview :text="optionText(option,index)"/></span></div>
    <AuthenticatedImage v-else-if="question.figureUrls?.[block.figureIndex||0]" :path="question.figureUrls[block.figureIndex||0]" alt="题目图片"/>
   </div>
  </div>
  <div v-else class="final-default">
   <div class="final-stem"><MathPreview :text="question.stem"/></div>
   <div v-if="images.length" class="final-images"><AuthenticatedImage v-for="path in images" :key="path" :path="path" alt="题目图片"/></div>
-  <div v-if="question.options?.length" class="final-options"><span v-for="(option,index) in question.options" :key="index"><b>{{String.fromCharCode(65+index)}}.</b><MathPreview :text="option"/></span></div>
+  <div v-if="question.options?.length" class="final-options"><span v-for="(option,index) in question.options" :key="index"><b>{{String.fromCharCode(65+index)}}.</b><MathPreview :text="optionText(option,index)"/></span></div>
  </div>
 </template>
 

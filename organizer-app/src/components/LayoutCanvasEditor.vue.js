@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue';
 import { CheckCircle2, Minus, Plus, RotateCcw, Trash2, X } from 'lucide-vue-next';
+import { optionText } from '../api';
 import AuthenticatedImage from './AuthenticatedImage.vue';
 import MathPreview from './MathPreview.vue';
 const props = defineProps();
@@ -259,14 +260,14 @@ for (const [block] of __VLS_vFor((__VLS_ctx.blocks))) {
             // @ts-ignore
             const __VLS_36 = __VLS_asFunctionalComponent1(__VLS_35, new __VLS_35({
                 key: (index),
-                text: (`${String.fromCharCode(65 + index)}. ${option}`),
+                text: (`${String.fromCharCode(65 + index)}. ${__VLS_ctx.optionText(option, index)}`),
             }));
             const __VLS_37 = __VLS_36({
                 key: (index),
-                text: (`${String.fromCharCode(65 + index)}. ${option}`),
+                text: (`${String.fromCharCode(65 + index)}. ${__VLS_ctx.optionText(option, index)}`),
             }, ...__VLS_functionalComponentArgsRest(__VLS_36));
             // @ts-ignore
-            [question, question,];
+            [question, question, optionText,];
         }
     }
     else if (__VLS_ctx.question.figureUrls?.[block.figureIndex || 0]) {

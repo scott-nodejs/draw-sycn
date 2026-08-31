@@ -1,4 +1,5 @@
 import { computed } from 'vue';
+import { optionText } from '../api';
 import AuthenticatedImage from './AuthenticatedImage.vue';
 import MathPreview from './MathPreview.vue';
 const props = defineProps();
@@ -60,13 +61,13 @@ if (__VLS_ctx.hasLayout) {
                 const __VLS_5 = MathPreview;
                 // @ts-ignore
                 const __VLS_6 = __VLS_asFunctionalComponent1(__VLS_5, new __VLS_5({
-                    text: (option),
+                    text: (__VLS_ctx.optionText(option, index)),
                 }));
                 const __VLS_7 = __VLS_6({
-                    text: (option),
+                    text: (__VLS_ctx.optionText(option, index)),
                 }, ...__VLS_functionalComponentArgsRest(__VLS_6));
                 // @ts-ignore
-                [hasLayout, previewHeight, blocks, blockStyle, question, question,];
+                [hasLayout, previewHeight, blocks, blockStyle, question, question, optionText,];
             }
         }
         else if (__VLS_ctx.question.figureUrls?.[block.figureIndex || 0]) {
@@ -138,13 +139,13 @@ else {
             const __VLS_25 = MathPreview;
             // @ts-ignore
             const __VLS_26 = __VLS_asFunctionalComponent1(__VLS_25, new __VLS_25({
-                text: (option),
+                text: (__VLS_ctx.optionText(option, index)),
             }));
             const __VLS_27 = __VLS_26({
-                text: (option),
+                text: (__VLS_ctx.optionText(option, index)),
             }, ...__VLS_functionalComponentArgsRest(__VLS_26));
             // @ts-ignore
-            [question, question,];
+            [question, question, optionText,];
         }
     }
 }

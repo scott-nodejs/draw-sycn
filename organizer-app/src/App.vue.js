@@ -1,6 +1,6 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { AlertTriangle, Archive, BookOpenCheck, CheckCircle2, ChevronLeft, ChevronRight, FileStack, LayoutDashboard, LocateFixed, LogOut, Plus, RefreshCw, Search, Settings2, ShoppingBag, Tags, Trash2, UploadCloud, WandSparkles } from 'lucide-vue-next';
-import { api, session } from './api';
+import { api, optionText, session } from './api';
 import SourcePaperPreview from './components/SourcePaperPreview.vue';
 import MathPreview from './components/MathPreview.vue';
 import LayoutCanvasEditor from './components/LayoutCanvasEditor.vue';
@@ -1796,13 +1796,13 @@ else {
                         const __VLS_185 = MathPreview;
                         // @ts-ignore
                         const __VLS_186 = __VLS_asFunctionalComponent1(__VLS_185, new __VLS_185({
-                            text: (option),
+                            text: (__VLS_ctx.optionText(option, index)),
                         }));
                         const __VLS_187 = __VLS_186({
-                            text: (option),
+                            text: (__VLS_ctx.optionText(option, index)),
                         }, ...__VLS_functionalComponentArgsRest(__VLS_186));
                         // @ts-ignore
-                        [selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion,];
+                        [selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, optionText,];
                     }
                 }
                 if (__VLS_ctx.selectedQuestion.options?.length) {

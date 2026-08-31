@@ -1,4 +1,5 @@
 const base = import.meta.env.VITE_API_BASE_URL || '/api';
+export function optionText(value, index) { const label = String.fromCharCode(65 + index); return (value || '').replace(new RegExp(`^\\s*${label}\\s*[.．、:：)）]\\s*`, 'i'), ''); }
 const key = 'organizer_session_v1';
 export const session = { get: () => { try {
         return JSON.parse(localStorage.getItem(key) || 'null');

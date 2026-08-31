@@ -2,10 +2,11 @@ import { computed } from 'vue';
 import katex from 'katex';
 const props = defineProps();
 function escape(value) { return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function normalizeLatex(value) { return value.replace(/\f(?=rac\b)/g, '\\f').replace(/\r(?=ight\b)/g, '\\r').replace(/\t(?=(?:imes|heta|ext)\b)/g, '\\t').replace(/(^|[^\\A-Za-z])(sqrt|frac|dfrac|tfrac)\s*\{/g, '$1\\$2{'); }
 const html = computed(() => { const source = props.text || ''; let output = '', last = 0; const expression = /\$([^$]+)\$/g; let match; while ((match = expression.exec(source))) {
     output += escape(source.slice(last, match.index));
     try {
-        output += katex.renderToString(match[1].trim(), { throwOnError: false, strict: false });
+        output += katex.renderToString(normalizeLatex(match[1].trim()), { throwOnError: false, strict: false });
     }
     catch {
         output += escape(match[0]);
