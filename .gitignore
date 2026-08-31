@@ -15,6 +15,7 @@ server/target/
 !teacher-agent-web/.env.production
 !teacher-app/.env.production
 !student-app/.env.production
+!organizer-app/.env.production
 .npm-cache/
 .idea/
 .m2/

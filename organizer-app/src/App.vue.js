@@ -155,7 +155,7 @@ finally {
     recognizing.value = false;
 } }
 function openSetEditor(item) { editingSetId.value = item?.id || null; setForm.value = item ? { title: item.title, description: item.description || '', subject: item.subject, grade: item.grade, collectionType: item.collectionType || 'topic', topicLabel: item.topicLabel || '', price: item.price, questionIds: [...(item.questionIds || [])] } : { title: '', description: '', subject: '数学', grade: '初三', collectionType: 'topic', topicLabel: '', price: 19.9, questionIds: [] }; setOpen.value = true; page.value = 'assembly'; }
-function openTeacherStore() { window.open(import.meta.env.VITE_TEACHER_APP_URL || 'http://127.0.0.1:5173/?page=question-sets&tab=store', '_blank', 'noopener,noreferrer'); }
+function openTeacherStore() { const url = new URL(import.meta.env.VITE_TEACHER_APP_URL || 'http://ai.hazer.top/teacher/', window.location.origin); url.searchParams.set('page', 'question-sets'); url.searchParams.set('tab', 'store'); window.open(url.toString(), '_blank', 'noopener,noreferrer'); }
 async function createSet() { await run(async () => { editingSetId.value ? await api.updateSet(editingSetId.value, setForm.value) : await api.createSet(setForm.value); setOpen.value = false; editingSetId.value = null; await load(); page.value = 'sets'; notify('试题集已保存'); }); }
 function closeSetEditor() { setOpen.value = false; editingSetId.value = null; page.value = 'sets'; }
 async function saveSetForm(value) { setForm.value = value; await createSet(); }
