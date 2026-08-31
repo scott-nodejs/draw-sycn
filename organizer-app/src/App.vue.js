@@ -14,7 +14,9 @@ const recognizing = ref(false);
 const layoutOpen = ref(false);
 const authMode = ref('login'), auth = ref({ name: '', account: '', password: '' });
 const showAuth = ref(false);
-const uploadOpen = ref(false), files = ref([]), upload = ref({ title: '', subject: '数学', grade: '初三' });
+const uploadOpen = ref(false), files = ref([]), upload = ref({ title: '', subject: '数学', grade: '初三' }), uploadError = ref('');
+const MAX_UPLOAD_BYTES = 300 * 1024 * 1024;
+const uploadSize = computed(() => files.value.reduce((total, file) => total + file.size, 0));
 const setOpen = ref(false), setForm = ref({ title: '', description: '', subject: '数学', grade: '初三', collectionType: 'topic', topicLabel: '', price: 19.9, questionIds: [] });
 const setTab = ref('mine'), editingSetId = ref(null);
 const knowledgePoints = ref([]), selectedKnowledgePoint = ref(''), questionSearch = ref(''), questionType = ref(''), questionDifficulty = ref(''), editingKnowledgeQuestion = ref(null), newKnowledgeName = ref('');
@@ -100,8 +102,15 @@ async function reparsePaper() {
 async function retryTask(p) { await run(async () => { await api.retry(p.id); await load(); notify('已重新启动试卷解析任务'); }); }
 async function deletePaper(p) { if (!window.confirm(`确定删除“${p.title}”吗？该试卷及其所属试题将从工作台中移除。`))
     return; await run(async () => { await api.deletePaper(p.id); await load(); notify('试卷及所属试题已删除'); }); }
+function selectUploadFiles(event) { const input = event.target, next = Array.from(input.files || []), size = next.reduce((total, file) => total + file.size, 0); uploadError.value = ''; if (next.some(file => file.size > MAX_UPLOAD_BYTES) || size > MAX_UPLOAD_BYTES) {
+    files.value = [];
+    input.value = '';
+    uploadError.value = '单个文件及本次上传总大小均不能超过 300MB';
+    return;
+} files.value = next; }
 async function submitUpload() { if (!files.value.length)
-    return error.value = '请选择 PDF、图片或 ZIP'; await run(async () => { const result = await api.upload(files.value, upload.value); const uploaded = Array.isArray(result) ? result : [result]; uploadOpen.value = false; files.value = []; await load(); notify(uploaded.length > 1 ? `已创建 ${uploaded.length} 个解析任务` : '上传成功，AI 已开始解析'); await openPaper(uploaded[0]); }); }
+    return uploadError.value = '请选择 PDF、图片或 ZIP'; if (uploadSize.value > MAX_UPLOAD_BYTES)
+    return uploadError.value = '本次上传总大小不能超过 300MB'; uploadError.value = ''; await run(async () => { const result = await api.upload(files.value, upload.value); const uploaded = Array.isArray(result) ? result : [result]; uploadOpen.value = false; files.value = []; await load(); notify(uploaded.length > 1 ? `已创建 ${uploaded.length} 个解析任务` : '上传成功，AI 已开始解析'); await openPaper(uploaded[0]); }); }
 async function saveQuestion() { if (!selectedQuestion.value)
     return; await run(async () => { selectedQuestion.value = await api.saveQuestion({ ...selectedQuestion.value, status: 'confirmed' }); const i = questions.value.findIndex(q => q.id === selectedQuestion.value.id); questions.value[i] = selectedQuestion.value; notify('校对结果已保存'); await load(); }); }
 async function saveLibraryAnswer(question) { await run(async () => { const saved = await api.saveQuestion({ ...question, status: 'confirmed' }), merged = { ...question, ...saved }; const index = confirmedQuestions.value.findIndex(item => item.id === saved.id); if (index >= 0)
@@ -2878,17 +2887,7 @@ else {
         __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
         __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
         __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
-            ...{ onChange: (...[$event]) => {
-                    if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
-                        throw 0;
-                    if (!!(!__VLS_ctx.current))
-                        throw 0;
-                    if (!(__VLS_ctx.uploadOpen))
-                        throw 0;
-                    return (__VLS_ctx.files = Array.from($event.target.files || []));
-                    // @ts-ignore
-                    [files,];
-                } },
+            ...{ onChange: (__VLS_ctx.selectUploadFiles) },
             type: "file",
             accept: "application/pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*,.zip,application/zip,application/x-zip-compressed",
             multiple: true,
@@ -2896,6 +2895,14 @@ else {
         if (__VLS_ctx.files.length) {
             __VLS_asFunctionalElement1(__VLS_intrinsics.em, __VLS_intrinsics.em)({});
             (__VLS_ctx.files.length);
+            ((__VLS_ctx.uploadSize / 1024 / 1024).toFixed(1));
+        }
+        if (__VLS_ctx.uploadError) {
+            __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                ...{ class: "error" },
+            });
+            /** @type {__VLS_StyleScopedClasses['error']} */ ;
+            (__VLS_ctx.uploadError);
         }
         __VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
         __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
@@ -2928,7 +2935,7 @@ else {
         __VLS_asFunctionalElement1(__VLS_intrinsics.option, __VLS_intrinsics.option)({});
         __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
             ...{ class: "primary wide" },
-            disabled: (__VLS_ctx.busy),
+            disabled: (__VLS_ctx.busy || !!__VLS_ctx.uploadError),
         });
         /** @type {__VLS_StyleScopedClasses['primary']} */ ;
         /** @type {__VLS_StyleScopedClasses['wide']} */ ;
@@ -3008,7 +3015,7 @@ else {
             });
             (__VLS_ctx.warningLabel(item));
             // @ts-ignore
-            [busy, busy, page, page, confirmedQuestions, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, files, files, upload, upload, upload, setForm, editingSetId, closeSetEditor, saveSetForm, warningLabel,];
+            [busy, busy, page, page, confirmedQuestions, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, selectUploadFiles, files, files, uploadSize, uploadError, uploadError, uploadError, upload, upload, upload, setForm, editingSetId, closeSetEditor, saveSetForm, warningLabel,];
         }
         // @ts-ignore
         [];
