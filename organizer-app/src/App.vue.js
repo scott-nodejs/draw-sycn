@@ -161,6 +161,8 @@ const __VLS_ctx = {
 let __VLS_components;
 let __VLS_intrinsics;
 let __VLS_directives;
+/** @type {__VLS_StyleScopedClasses['question-card-head']} */ ;
+/** @type {__VLS_StyleScopedClasses['answer-edit']} */ ;
 if (!__VLS_ctx.current && !__VLS_ctx.showAuth) {
     __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
         ...{ class: "public-site" },
@@ -2167,15 +2169,19 @@ else {
                         // @ts-ignore
                         [busy, libraryEditingQuestion, knowledgePoints, selectedKnowledgePoint, createKnowledgePoint, newKnowledgeName, newKnowledgeName, questionSearch, questionType, questionDifficulty, filteredQuestions, pagedQuestions,];
                     } },
-                ...{ style: {} },
+                ...{ class: "answer-edit" },
+                ...{ class: ({ active: __VLS_ctx.libraryEditingQuestion?.id === q.id }) },
                 title: "编辑正确答案和解析",
             });
+            /** @type {__VLS_StyleScopedClasses['answer-edit']} */ ;
+            /** @type {__VLS_StyleScopedClasses['active']} */ ;
             let __VLS_225;
             /** @ts-ignore @type { | typeof __VLS_components.FilePenLine} */
             FilePenLine;
             // @ts-ignore
             const __VLS_226 = __VLS_asFunctionalComponent1(__VLS_225, new __VLS_225({}));
             const __VLS_227 = __VLS_226({}, ...__VLS_functionalComponentArgsRest(__VLS_226));
+            (__VLS_ctx.libraryEditingQuestion?.id === q.id ? '正在编辑' : '编辑答案解析');
             __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
                 ...{ onClick: (...[$event]) => {
                         if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
@@ -2194,7 +2200,7 @@ else {
                             throw 0;
                         return (__VLS_ctx.locateQuestionInPaper(q));
                         // @ts-ignore
-                        [locateQuestionInPaper,];
+                        [libraryEditingQuestion, libraryEditingQuestion, locateQuestionInPaper,];
                     } },
                 ...{ class: "source-locate" },
                 ...{ style: {} },
