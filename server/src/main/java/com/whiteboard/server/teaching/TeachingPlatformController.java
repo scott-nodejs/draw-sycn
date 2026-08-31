@@ -135,6 +135,18 @@ public class TeachingPlatformController {
       .body(service.getQuestionFigure(questionId, assetIndex, userId));
   }
 
+  @PostMapping("/questions/{questionId}/figures/{assetIndex}/enhance")
+  public Map<String, Object> enhanceQuestionFigure(@PathVariable String questionId, @PathVariable int assetIndex,
+      @RequestHeader("X-User-Id") String userId) throws IOException {
+    return service.enhanceQuestionFigure(questionId, assetIndex, userId);
+  }
+
+  @PutMapping(value = "/questions/{questionId}/figures/{assetIndex}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  public Map<String, Object> replaceQuestionFigure(@PathVariable String questionId, @PathVariable int assetIndex,
+      @RequestParam("file") MultipartFile file, @RequestHeader("X-User-Id") String userId) throws IOException {
+    return service.replaceQuestionFigure(questionId, assetIndex, file, userId);
+  }
+
   @GetMapping(value = "/papers/{paperId}/pages/{pageNumber}", produces = MediaType.IMAGE_JPEG_VALUE)
   public ResponseEntity<?> getPaperPage(
       @PathVariable String paperId,

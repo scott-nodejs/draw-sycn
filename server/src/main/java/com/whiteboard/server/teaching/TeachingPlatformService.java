@@ -8,6 +8,11 @@ import com.whiteboard.server.config.WhiteboardProperties;
 import com.whiteboard.server.paperprocessing.QuestionReprocessingService;
 import java.io.IOException;
 import java.io.InputStream;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
+import java.awt.image.ConvolveOp;
+import java.awt.image.Kernel;
 import java.math.BigDecimal;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
@@ -29,6 +34,7 @@ import java.util.UUID;
 import java.util.Comparator;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+import javax.imageio.ImageIO;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.core.io.PathResource;
@@ -435,6 +441,76 @@ public class TeachingPlatformService {
     return getQuestionImageAsset(questionId, assetIndex, userId, "figureAssets");
   }
 
+  @Transactional
+  public Map<String, Object> replaceQuestionFigure(String questionId, int assetIndex, MultipartFile file, String userId) throws IOException {
+    if (file == null || file.isEmpty()) throw badRequest("请选择要替换的图片");
+    if (file.getSize() > 20L * 1024 * 1024) throw badRequest("图片不能超过20MB");
+    BufferedImage image;
+    try (InputStream input = file.getInputStream()) { image = ImageIO.read(input); }
+    if (image == null) throw badRequest("上传文件不是有效图片");
+    return writeQuestionFigure(questionId, assetIndex, image, userId, "替换题目图片");
+  }
+
+  @Transactional
+  public Map<String, Object> enhanceQuestionFigure(String questionId, int assetIndex, String userId) throws IOException {
+    Path path = questionFigurePath(questionId, assetIndex, userId, true);
+    BufferedImage source = ImageIO.read(path.toFile());
+    if (source == null) throw badRequest("题目图片无法读取");
+    int width = Math.min(source.getWidth() * 2, 4096), height = Math.min(source.getHeight() * 2, 4096);
+    BufferedImage scaled = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+    Graphics2D graphics = scaled.createGraphics();
+    graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+    graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+    graphics.drawImage(source, 0, 0, width, height, null);
+    graphics.dispose();
+    Kernel kernel = new Kernel(3, 3, new float[]{0, -0.18f, 0, -0.18f, 1.72f, -0.18f, 0, -0.18f, 0});
+    BufferedImage enhanced = new ConvolveOp(kernel, ConvolveOp.EDGE_NO_OP, null).filter(scaled, null);
+    return writeQuestionFigure(questionId, assetIndex, enhanced, userId, "增强题目图片清晰度");
+  }
+
+  private Map<String, Object> writeQuestionFigure(String questionId, int assetIndex, BufferedImage image, String userId, String reason) throws IOException {
+    Map<String, Object> current = getQuestion(questionId);
+    assertPaperOwner(stringValue(current.get("paperId")), userId);
+    Path path = questionFigurePath(questionId, assetIndex, userId, false);
+    Path temporary = Files.createTempFile(path.getParent(), "figure-", ".png");
+    try {
+      if (!ImageIO.write(image, "png", temporary.toFile())) throw badRequest("图片格式转换失败");
+      try { Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE); }
+      catch (java.nio.file.AtomicMoveNotSupportedException error) { Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING); }
+    } finally { Files.deleteIfExists(temporary); }
+    String cropJson = jdbc.queryForObject("SELECT crop_regions_json FROM teaching_question WHERE id=?", String.class, questionId);
+    try {
+      JsonNode parsed = objectMapper.readTree(cropJson);
+      ObjectNode cropData = parsed instanceof ObjectNode ? (ObjectNode) parsed : objectMapper.createObjectNode();
+      JsonNode descriptor = cropData.path("figureAssets").path(assetIndex);
+      if (descriptor instanceof ObjectNode) {
+        ((ObjectNode) descriptor).put("width", image.getWidth());
+        ((ObjectNode) descriptor).put("height", image.getHeight());
+      }
+      jdbc.update("UPDATE teaching_question SET crop_regions_json=?,version=version+1,updated_at=? WHERE id=?",
+        objectMapper.writeValueAsString(cropData), Timestamp.valueOf(LocalDateTime.now()), questionId);
+      Map<String, Object> updated = getQuestion(questionId);
+      jdbc.update("INSERT INTO question_revision (id,question_id,version,snapshot_json,change_source,changed_by,change_reason,created_at) VALUES (?,?,?,?, 'TEACHER_EDIT',?,?,?)",
+        newId("revision"), questionId, longValue(updated.get("version")), json(updated), safe(userId), reason, Timestamp.valueOf(LocalDateTime.now()));
+      return updated;
+    } catch (JsonProcessingException error) { throw badRequest("题目图片数据损坏"); }
+  }
+
+  private Path questionFigurePath(String questionId, int assetIndex, String userId, boolean allowViewer) {
+    Map<String, Object> question = getQuestion(questionId);
+    if (allowViewer) assertQuestionImageViewer(questionId, stringValue(question.get("paperId")), userId);
+    else assertPaperOwner(stringValue(question.get("paperId")), userId);
+    String cropJson = jdbc.queryForObject("SELECT crop_regions_json FROM teaching_question WHERE id=?", String.class, questionId);
+    try {
+      JsonNode assets = objectMapper.readTree(cropJson).path("figureAssets");
+      if (!assets.isArray() || assetIndex < 0 || assetIndex >= assets.size()) throw notFound("题目图片不存在");
+      Path root = Paths.get(properties.getStorageRoot()).toAbsolutePath().normalize();
+      Path path = Paths.get(assets.get(assetIndex).path("objectKey").asText()).toAbsolutePath().normalize();
+      if (!path.startsWith(root) || !Files.isRegularFile(path)) throw notFound("题目图片不存在");
+      return path;
+    } catch (JsonProcessingException error) { throw notFound("题目图片数据损坏"); }
+  }
+
   private Resource getQuestionImageAsset(String questionId, int assetIndex, String userId, String assetField) {
     Map<String, Object> question = getQuestion(questionId); assertQuestionImageViewer(questionId, stringValue(question.get("paperId")), userId);
     String cropJson = jdbc.queryForObject("SELECT crop_regions_json FROM teaching_question WHERE id=?", String.class, questionId);
@@ -728,7 +804,7 @@ public class TeachingPlatformService {
     if (cropData.has("presentationLayout")) row.put("presentationLayout", cropData.path("presentationLayout"));
     List<String> cropUrls = new ArrayList<>(); for (int i = 0; i < cropData.path("assets").size(); i++) cropUrls.add("/api/questions/" + rs.getString("id") + "/crops/" + i);
     row.put("cropUrls", cropUrls);
-    List<String> figureUrls = new ArrayList<>(); for (int i = 0; i < cropData.path("figureAssets").size(); i++) figureUrls.add("/api/questions/" + rs.getString("id") + "/figures/" + i);
+    List<String> figureUrls = new ArrayList<>(); for (int i = 0; i < cropData.path("figureAssets").size(); i++) figureUrls.add("/api/questions/" + rs.getString("id") + "/figures/" + i + "?v=" + rs.getLong("version"));
     row.put("figureUrls", figureUrls); return row;
   }
 

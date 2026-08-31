@@ -98,6 +98,8 @@ async function saveLibraryAnswer(question) { await run(async () => { const saved
     confirmedQuestions.value[index] = merged; libraryEditingQuestion.value = { ...merged }; notify('答案与解析已保存'); }); }
 async function saveLayout(layout) { if (!selectedQuestion.value)
     return; selectedQuestion.value = { ...selectedQuestion.value, presentationLayout: layout }; await saveQuestion(); layoutOpen.value = false; }
+function updateQuestionFromLayout(question, message) { selectedQuestion.value = { ...question }; const index = questions.value.findIndex(item => item.id === question.id); if (index >= 0)
+    questions.value[index] = { ...question }; notify(message); }
 function updateRegions(regions) { if (selectedQuestion.value)
     selectedQuestion.value = { ...selectedQuestion.value, sourceRegions: regions }; }
 async function toggleRegionEditing() { if (!regionEditing.value) {
@@ -3194,12 +3196,14 @@ else {
         const __VLS_374 = __VLS_asFunctionalComponent1(__VLS_373, new __VLS_373({
             ...{ 'onClose': {} },
             ...{ 'onSave': {} },
+            ...{ 'onQuestionUpdated': {} },
             question: (__VLS_ctx.selectedQuestion),
             saving: (__VLS_ctx.busy),
         }));
         const __VLS_375 = __VLS_374({
             ...{ 'onClose': {} },
             ...{ 'onSave': {} },
+            ...{ 'onQuestionUpdated': {} },
             question: (__VLS_ctx.selectedQuestion),
             saving: (__VLS_ctx.busy),
         }, ...__VLS_functionalComponentArgsRest(__VLS_374));
@@ -3222,6 +3226,10 @@ else {
             /** @type {typeof __VLS_378.save} */
             onSave: (__VLS_ctx.saveLayout),
         };
+        const __VLS_381 = {
+            /** @type {typeof __VLS_378.questionUpdated} */
+            onQuestionUpdated: (__VLS_ctx.updateQuestionFromLayout),
+        };
         var __VLS_376;
         var __VLS_377;
     }
@@ -3234,6 +3242,6 @@ else {
     }
 }
 // @ts-ignore
-[saveLayout, toast, toast,];
+[saveLayout, updateQuestionFromLayout, toast, toast,];
 const __VLS_export = (await import('vue')).defineComponent({});
 export default {};

@@ -1,11 +1,34 @@
 import { computed, ref } from 'vue';
-import { CheckCircle2, Minus, Plus, RotateCcw, Trash2, X } from 'lucide-vue-next';
-import { optionText } from '../api';
+import { CheckCircle2, ImageUp, Minus, Plus, RotateCcw, Sparkles, Trash2, X } from 'lucide-vue-next';
+import { api, optionText } from '../api';
 import AuthenticatedImage from './AuthenticatedImage.vue';
 import MathPreview from './MathPreview.vue';
 const props = defineProps();
 const emit = defineEmits();
 const zoom = ref(0.85);
+const imageBusy = ref(null);
+async function enhanceFigure(index) { if (imageBusy.value !== null)
+    return; imageBusy.value = index; try {
+    emit('question-updated', await api.enhanceFigure(props.question.id, index), '图片清晰度已增强');
+}
+catch (error) {
+    window.alert(error instanceof Error ? error.message : '图片增强失败');
+}
+finally {
+    imageBusy.value = null;
+} }
+function chooseFigure(index) { const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/png,image/jpeg,image/webp'; input.onchange = () => { const file = input.files?.[0]; if (file)
+    replaceFigure(index, file); }; input.click(); }
+async function replaceFigure(index, file) { if (imageBusy.value !== null)
+    return; imageBusy.value = index; try {
+    emit('question-updated', await api.replaceFigure(props.question.id, index, file), '图片已替换');
+}
+catch (error) {
+    window.alert(error instanceof Error ? error.message : '图片替换失败');
+}
+finally {
+    imageBusy.value = null;
+} }
 function defaults() { const blocks = [{ id: 'stem', kind: 'stem', x: 4, y: 4, width: 92, height: 18 }, { id: 'options', kind: 'options', x: 4, y: 24, width: 92, height: 14 }]; (props.question.figureUrls || []).forEach((_, index) => blocks.push({ id: `figure-${index}`, kind: 'figure', figureIndex: index, x: 5 + (index % 3) * 31, y: 42 + Math.floor(index / 3) * 34, width: 28, height: 30 })); return { width: 1000, height: 620, blocks }; }
 const layout = ref(props.question.presentationLayout?.blocks?.length ? JSON.parse(JSON.stringify(props.question.presentationLayout)) : defaults());
 if ((layout.value.width || 0) < 320)
@@ -76,6 +99,10 @@ let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['canvas-resizer']} */ ;
 /** @type {__VLS_StyleScopedClasses['canvas-resizer']} */ ;
 /** @type {__VLS_StyleScopedClasses['canvas-resizer']} */ ;
+/** @type {__VLS_StyleScopedClasses['image-actions']} */ ;
+/** @type {__VLS_StyleScopedClasses['image-actions']} */ ;
+/** @type {__VLS_StyleScopedClasses['image-actions']} */ ;
+/** @type {__VLS_StyleScopedClasses['image-actions']} */ ;
 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
     ...{ class: "layout-editor-layer" },
 });
@@ -219,36 +246,78 @@ for (const [block] of __VLS_vFor((__VLS_ctx.blocks))) {
     });
     /** @type {__VLS_StyleScopedClasses['block-label']} */ ;
     (block.kind === 'stem' ? '题干' : block.kind === 'options' ? '选项' : `图片 ${(block.figureIndex || 0) + 1}`);
+    if (block.kind === 'figure') {
+        __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+            ...{ onPointerdown: () => { } },
+            ...{ class: "image-actions" },
+        });
+        /** @type {__VLS_StyleScopedClasses['image-actions']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!(block.kind === 'figure'))
+                        throw 0;
+                    return (__VLS_ctx.enhanceFigure(block.figureIndex || 0));
+                    // @ts-ignore
+                    [enhanceFigure,];
+                } },
+            disabled: (__VLS_ctx.imageBusy !== null),
+            title: "增强清晰度",
+        });
+        let __VLS_25;
+        /** @ts-ignore @type { | typeof __VLS_components.Sparkles} */
+        Sparkles;
+        // @ts-ignore
+        const __VLS_26 = __VLS_asFunctionalComponent1(__VLS_25, new __VLS_25({}));
+        const __VLS_27 = __VLS_26({}, ...__VLS_functionalComponentArgsRest(__VLS_26));
+        (__VLS_ctx.imageBusy === (block.figureIndex || 0) ? '处理中' : '增强');
+        __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!(block.kind === 'figure'))
+                        throw 0;
+                    return (__VLS_ctx.chooseFigure(block.figureIndex || 0));
+                    // @ts-ignore
+                    [imageBusy, imageBusy, chooseFigure,];
+                } },
+            disabled: (__VLS_ctx.imageBusy !== null),
+            title: "替换图片",
+        });
+        let __VLS_30;
+        /** @ts-ignore @type { | typeof __VLS_components.ImageUp} */
+        ImageUp;
+        // @ts-ignore
+        const __VLS_31 = __VLS_asFunctionalComponent1(__VLS_30, new __VLS_30({}));
+        const __VLS_32 = __VLS_31({}, ...__VLS_functionalComponentArgsRest(__VLS_31));
+    }
     __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
         ...{ onPointerdown: () => { } },
         ...{ onClick: (...[$event]) => {
                 return (__VLS_ctx.remove(block.id));
                 // @ts-ignore
-                [remove,];
+                [imageBusy, remove,];
             } },
         ...{ class: "delete-block" },
         title: "删除",
     });
     /** @type {__VLS_StyleScopedClasses['delete-block']} */ ;
-    let __VLS_25;
+    let __VLS_35;
     /** @ts-ignore @type { | typeof __VLS_components.Trash2} */
     Trash2;
     // @ts-ignore
-    const __VLS_26 = __VLS_asFunctionalComponent1(__VLS_25, new __VLS_25({}));
-    const __VLS_27 = __VLS_26({}, ...__VLS_functionalComponentArgsRest(__VLS_26));
+    const __VLS_36 = __VLS_asFunctionalComponent1(__VLS_35, new __VLS_35({}));
+    const __VLS_37 = __VLS_36({}, ...__VLS_functionalComponentArgsRest(__VLS_36));
     __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
         ...{ class: "block-content" },
     });
     /** @type {__VLS_StyleScopedClasses['block-content']} */ ;
     if (block.kind === 'stem') {
-        const __VLS_30 = MathPreview;
+        const __VLS_40 = MathPreview;
         // @ts-ignore
-        const __VLS_31 = __VLS_asFunctionalComponent1(__VLS_30, new __VLS_30({
+        const __VLS_41 = __VLS_asFunctionalComponent1(__VLS_40, new __VLS_40({
             text: (__VLS_ctx.question.stem),
         }));
-        const __VLS_32 = __VLS_31({
+        const __VLS_42 = __VLS_41({
             text: (__VLS_ctx.question.stem),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_31));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_41));
     }
     else if (block.kind === 'options') {
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
@@ -256,35 +325,37 @@ for (const [block] of __VLS_vFor((__VLS_ctx.blocks))) {
         });
         /** @type {__VLS_StyleScopedClasses['canvas-options']} */ ;
         for (const [option, index] of __VLS_vFor((__VLS_ctx.question.options))) {
-            const __VLS_35 = MathPreview;
+            const __VLS_45 = MathPreview;
             // @ts-ignore
-            const __VLS_36 = __VLS_asFunctionalComponent1(__VLS_35, new __VLS_35({
+            const __VLS_46 = __VLS_asFunctionalComponent1(__VLS_45, new __VLS_45({
                 key: (index),
                 text: (`${String.fromCharCode(65 + index)}. ${__VLS_ctx.optionText(option, index)}`),
             }));
-            const __VLS_37 = __VLS_36({
+            const __VLS_47 = __VLS_46({
                 key: (index),
                 text: (`${String.fromCharCode(65 + index)}. ${__VLS_ctx.optionText(option, index)}`),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_36));
+            }, ...__VLS_functionalComponentArgsRest(__VLS_46));
             // @ts-ignore
             [question, question, optionText,];
         }
     }
     else if (__VLS_ctx.question.figureUrls?.[block.figureIndex || 0]) {
-        const __VLS_40 = AuthenticatedImage;
+        const __VLS_50 = AuthenticatedImage;
         // @ts-ignore
-        const __VLS_41 = __VLS_asFunctionalComponent1(__VLS_40, new __VLS_40({
+        const __VLS_51 = __VLS_asFunctionalComponent1(__VLS_50, new __VLS_50({
+            key: (__VLS_ctx.question.figureUrls[block.figureIndex || 0]),
             path: (__VLS_ctx.question.figureUrls[block.figureIndex || 0]),
         }));
-        const __VLS_42 = __VLS_41({
+        const __VLS_52 = __VLS_51({
+            key: (__VLS_ctx.question.figureUrls[block.figureIndex || 0]),
             path: (__VLS_ctx.question.figureUrls[block.figureIndex || 0]),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_41));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_51));
     }
     __VLS_asFunctionalElement1(__VLS_intrinsics.i, __VLS_intrinsics.i)({
         ...{ onPointerdown: (...[$event]) => {
                 return (__VLS_ctx.begin($event, block, 'resize'));
                 // @ts-ignore
-                [begin, question, question,];
+                [begin, question, question, question,];
             } },
         ...{ class: "block-resizer" },
     });
@@ -331,12 +402,12 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
     ...{ class: "ghost" },
 });
 /** @type {__VLS_StyleScopedClasses['ghost']} */ ;
-let __VLS_45;
+let __VLS_55;
 /** @ts-ignore @type { | typeof __VLS_components.RotateCcw} */
 RotateCcw;
 // @ts-ignore
-const __VLS_46 = __VLS_asFunctionalComponent1(__VLS_45, new __VLS_45({}));
-const __VLS_47 = __VLS_46({}, ...__VLS_functionalComponentArgsRest(__VLS_46));
+const __VLS_56 = __VLS_asFunctionalComponent1(__VLS_55, new __VLS_55({}));
+const __VLS_57 = __VLS_56({}, ...__VLS_functionalComponentArgsRest(__VLS_56));
 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({});
 __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
     ...{ onClick: (...[$event]) => {
@@ -357,12 +428,12 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
     disabled: (__VLS_ctx.saving),
 });
 /** @type {__VLS_StyleScopedClasses['primary']} */ ;
-let __VLS_50;
+let __VLS_60;
 /** @ts-ignore @type { | typeof __VLS_components.CheckCircle2} */
 CheckCircle2;
 // @ts-ignore
-const __VLS_51 = __VLS_asFunctionalComponent1(__VLS_50, new __VLS_50({}));
-const __VLS_52 = __VLS_51({}, ...__VLS_functionalComponentArgsRest(__VLS_51));
+const __VLS_61 = __VLS_asFunctionalComponent1(__VLS_60, new __VLS_60({}));
+const __VLS_62 = __VLS_61({}, ...__VLS_functionalComponentArgsRest(__VLS_61));
 (__VLS_ctx.saving ? '保存中' : '保存版式');
 // @ts-ignore
 [saving, saving,];

@@ -69,6 +69,7 @@ async function submitUpload(){if(!files.value.length)return error.value='请选�
 async function saveQuestion(){if(!selectedQuestion.value)return;await run(async()=>{selectedQuestion.value=await api.saveQuestion({...selectedQuestion.value!,status:'confirmed'});const i=questions.value.findIndex(q=>q.id===selectedQuestion.value!.id);questions.value[i]=selectedQuestion.value!;notify('校对结果已保存');await load()})}
 async function saveLibraryAnswer(question:Question){await run(async()=>{const saved=await api.saveQuestion({...question,status:'confirmed'}),merged={...question,...saved};const index=confirmedQuestions.value.findIndex(item=>item.id===saved.id);if(index>=0)confirmedQuestions.value[index]=merged;libraryEditingQuestion.value={...merged};notify('答案与解析已保存')})}
 async function saveLayout(layout:PresentationLayout){if(!selectedQuestion.value)return;selectedQuestion.value={...selectedQuestion.value,presentationLayout:layout};await saveQuestion();layoutOpen.value=false}
+function updateQuestionFromLayout(question:Question,message:string){selectedQuestion.value={...question};const index=questions.value.findIndex(item=>item.id===question.id);if(index>=0)questions.value[index]={...question};notify(message)}
 function updateRegions(regions:NonNullable<Question['sourceRegions']>){if(selectedQuestion.value)selectedQuestion.value={...selectedQuestion.value,sourceRegions:regions}}
 async function toggleRegionEditing(){if(!regionEditing.value){regionEditing.value=true;return}if(!selectedQuestion.value)return;await run(async()=>{selectedQuestion.value=await api.saveQuestion(selectedQuestion.value!);const index=questions.value.findIndex(item=>item.id===selectedQuestion.value!.id);if(index>=0)questions.value[index]=selectedQuestion.value!;regionEditing.value=false;notify('切题区域已保存并生成新版本')})}
 function setFigurePosition(value:'above'|'below'|'inline'){if(selectedQuestion.value)selectedQuestion.value={...selectedQuestion.value,presentationLayout:{...selectedQuestion.value.presentationLayout,figurePosition:value}}}
@@ -132,7 +133,7 @@ watch(questionPageCount,total=>questionPage.value=Math.min(questionPage.value,to
   <Teleport v-if="page==='review' && selectedPaper && selectedQuestion" to=".crop-placeholder">
    <SourcePaperPreview :paper="selectedPaper" :question="selectedQuestion" :recognizing="recognizing" @update:regions="updateRegions" @recognize="reprocessSelected" />
   </Teleport>
-  <LayoutCanvasEditor v-if="layoutOpen && selectedQuestion" :question="selectedQuestion" :saving="busy" @close="layoutOpen=false" @save="saveLayout"/>
+  <LayoutCanvasEditor v-if="layoutOpen && selectedQuestion" :question="selectedQuestion" :saving="busy" @close="layoutOpen=false" @save="saveLayout" @question-updated="updateQuestionFromLayout"/>
   <div v-if="toast" class="toast">{{toast}}</div>
  </div>
 </template>
