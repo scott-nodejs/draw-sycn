@@ -135,7 +135,7 @@ public class PaperProcessingService {
     for (Map<String, Object> job : jobs) {
       if (activeJobs.get() >= MAX_CONCURRENT_JOBS) return;
       String id = string(job.get("id"));
-      if (jdbc.update("UPDATE teaching_parse_job SET locked_at=?,updated_at=? WHERE id=? AND (locked_at IS NULL OR locked_at<?)", now(), now(), id, Timestamp.valueOf(LocalDateTime.now().minusMinutes(10))) == 0) continue;
+      if (jdbc.update("UPDATE teaching_parse_job SET locked_at=?,updated_at=? WHERE id=? AND status IN ('queued','processing') AND (locked_at IS NULL OR locked_at<?)", now(), now(), id, Timestamp.valueOf(LocalDateTime.now().minusMinutes(10))) == 0) continue;
       activeJobs.incrementAndGet();
       log.info("Paper job claimed: jobId={}, paperId={}, stage={}, retryCount={}, activeJobs={}", id, job.get("paperId"), job.get("stage"), job.get("retryCount"), activeJobs.get());
       processingExecutor.submit(() -> {
@@ -157,7 +157,7 @@ public class PaperProcessingService {
       List<Path> sources = sourceFiles(paperId);
       if (sources.isEmpty()) throw new ProviderException("SOURCE_FILES_MISSING", "找不到试卷源文件");
       log.info("Paper normalization starting: jobId={}, paperId={}, sourceCount={}", jobId, paperId, sources.size());
-      jdbc.update("UPDATE teaching_parse_job SET status='processing',stage='normalizing',progress=5,updated_at=? WHERE id=?", now(), jobId);
+      if (jdbc.update("UPDATE teaching_parse_job SET status='processing',stage='normalizing',progress=5,updated_at=? WHERE id=? AND status IN ('queued','processing')", now(), jobId) == 0) return;
       String normalizationExecution = stageExecutions.start(jobId, paperId, "normalizing", "pdfbox");
       int pages = normalizer.normalize(paperId, sources, paperDirectory(paperId));
       stageExecutions.complete(normalizationExecution, "{\"pageCount\":" + pages + "}");
@@ -238,7 +238,7 @@ public class PaperProcessingService {
       }
       Path structuredPath = paperDirectory(paperId).resolve("structured-questions.json"); json.writeValue(structuredPath.toFile(), structured);
       int count = structured.path("questions").size();
-      jdbc.update("UPDATE teaching_parse_job SET status='review',stage='review_required',progress=100,result_object_key=?,locked_at=NULL,finished_at=?,updated_at=? WHERE id=?", structuredPath.toString(), now(), now(), jobId);
+      if (jdbc.update("UPDATE teaching_parse_job SET status='review',stage='review_required',progress=100,result_object_key=?,locked_at=NULL,finished_at=?,updated_at=? WHERE id=? AND status='processing'", structuredPath.toString(), now(), now(), jobId) == 0) return;
       jdbc.update("UPDATE teaching_paper SET status='review',progress=100,question_count=?,updated_at=? WHERE id=?", count, now(), paperId);
       cloudMigration.queue(paperId);
       log.info("Paper processing completed: jobId={}, paperId={}, questionCount={}", jobId, paperId, count);
@@ -567,8 +567,22 @@ public class PaperProcessingService {
     jdbc.update("UPDATE teaching_paper SET status='processing',progress=0,updated_at=? WHERE id=?", now(), paperId);
     return status(paperId, userId);
   }
+  public Map<String, Object> pause(String paperId, String userId) {
+    assertOwner(paperId, userId);
+    int changed = jdbc.update("UPDATE teaching_parse_job SET status='paused',locked_at=NULL,updated_at=? WHERE id=(SELECT id FROM (SELECT id FROM teaching_parse_job WHERE paper_id=? ORDER BY created_at DESC,id DESC LIMIT 1) latest) AND status IN ('queued','processing')", now(), paperId);
+    if (changed == 0) throw new ResponseStatusException(HttpStatus.CONFLICT, "当前任务不能暂停");
+    return status(paperId, userId);
+  }
+  public Map<String, Object> resume(String paperId, String userId) {
+    assertOwner(paperId, userId);
+    int changed = jdbc.update("UPDATE teaching_parse_job SET status=CASE WHEN stage='queued' THEN 'queued' ELSE 'processing' END,locked_at=NULL,next_retry_at=NULL,updated_at=? WHERE id=(SELECT id FROM (SELECT id FROM teaching_parse_job WHERE paper_id=? ORDER BY created_at DESC,id DESC LIMIT 1) latest) AND status='paused'", now(), paperId);
+    if (changed == 0) throw new ResponseStatusException(HttpStatus.CONFLICT, "当前任务未处于暂停状态");
+    return status(paperId, userId);
+  }
   private void assertOwner(String paperId, String userId) { Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM teaching_paper WHERE id=? AND creator_id=?", Integer.class, paperId, userId); if (count == null || count == 0) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "无权访问该试卷"); }
   private void failOrRetry(Map<String, Object> job, Exception error) {
+    Integer paused = jdbc.queryForObject("SELECT COUNT(*) FROM teaching_parse_job WHERE id=? AND status='paused'", Integer.class, job.get("id"));
+    if (paused != null && paused > 0) return;
     Throwable cause = error.getCause() == null ? error : error.getCause();
     int retry = ((Number) job.get("retryCount")).intValue() + 1;
     String code = cause instanceof ProviderException ? ((ProviderException) cause).getCode() : "PROCESSING_ERROR";
