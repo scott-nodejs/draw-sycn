@@ -25,7 +25,15 @@ const paperCounts = computed(() => ({ queued: papers.value.filter(p => p.status 
 const filteredPapers = computed(() => papers.value.filter(p => (paperFilter.value === 'all' || p.status === paperFilter.value) && (!paperSearch.value || `${p.title} ${p.grade} ${p.subject}`.toLowerCase().includes(paperSearch.value.toLowerCase()))));
 const taskCounts = computed(() => ({ queued: papers.value.filter(p => p.status === 'queued').length, running: papers.value.filter(p => p.status === 'processing').length, failed: papers.value.filter(p => p.status === 'failed').length, completed: papers.value.filter(p => !['processing', 'queued', 'failed'].includes(p.status)).length }));
 const filteredTasks = computed(() => papers.value.filter(p => taskFilter.value === 'all' || (taskFilter.value === 'queued' && p.status === 'queued') || (taskFilter.value === 'running' && p.status === 'processing') || (taskFilter.value === 'failed' && p.status === 'failed') || (taskFilter.value === 'completed' && !['processing', 'queued', 'failed'].includes(p.status))));
-const filteredQuestions = computed(() => confirmedQuestions.value.filter(q => (!selectedKnowledgePoint.value || q.knowledgePointIds?.includes(selectedKnowledgePoint.value)) && (!questionSearch.value || `${q.stem} ${q.sourceTitle || ''}`.toLowerCase().includes(questionSearch.value.toLowerCase())) && (!questionType.value || q.type === questionType.value) && (!questionDifficulty.value || q.difficulty === questionDifficulty.value)));
+function knowledgeDescendants(id) { const ids = new Set([id]); let changed = true; while (changed) {
+    changed = false;
+    for (const point of knowledgePoints.value)
+        if (point.parentId && ids.has(point.parentId) && !ids.has(point.id)) {
+            ids.add(point.id);
+            changed = true;
+        }
+} return ids; }
+const filteredQuestions = computed(() => { const selected = selectedKnowledgePoint.value ? knowledgeDescendants(selectedKnowledgePoint.value) : null; return confirmedQuestions.value.filter(q => (!selected || q.knowledgePointIds?.some(id => selected.has(id))) && (!questionSearch.value || `${q.stem} ${q.sourceTitle || ''}`.toLowerCase().includes(questionSearch.value.toLowerCase())) && (!questionType.value || q.type === questionType.value) && (!questionDifficulty.value || q.difficulty === questionDifficulty.value)); });
 const pageCount = (total, size = pageSize) => Math.max(1, Math.ceil(total / size));
 const pageItems = (items, currentPage, size = pageSize) => items.slice((currentPage - 1) * size, currentPage * size);
 const paperPageCount = computed(() => pageCount(filteredPapers.value.length, paperPageSize)), taskPageCount = computed(() => pageCount(filteredTasks.value.length)), questionPageCount = computed(() => pageCount(filteredQuestions.value.length));
@@ -33,6 +41,8 @@ const pagedPapers = computed(() => pageItems(filteredPapers.value, paperPage.val
 const visiblePages = (currentPage, totalPages) => Array.from({ length: Math.min(5, totalPages) }, (_, index) => Math.min(Math.max(1, currentPage - 2), Math.max(1, totalPages - 4)) + index);
 const rootKnowledgePoints = computed(() => knowledgePoints.value.filter(item => !item.parentId));
 const knowledgeChildren = (parentId) => knowledgePoints.value.filter(item => item.parentId === parentId);
+const visibleKnowledgePoints = computed(() => { const rows = []; const append = (point, depth) => { const children = knowledgeChildren(point.id); rows.push({ point, depth, hasChildren: children.length > 0 }); if (expandedKnowledge.value.has(point.id))
+    children.forEach(child => append(child, depth + 1)); }; rootKnowledgePoints.value.forEach(root => append(root, 0)); return rows; });
 function toggleKnowledge(id) { const next = new Set(expandedKnowledge.value); next.has(id) ? next.delete(id) : next.add(id); expandedKnowledge.value = next; }
 const knowledgeName = (id) => knowledgePoints.value.find(item => item.id === id)?.name || '';
 const stats = computed(() => ({ total: papers.value.length, parsing: papers.value.filter(p => ['queued', 'processing'].includes(p.status)).length, reviewing: papers.value.filter(p => p.status === 'review').length, done: papers.value.reduce((n, p) => n + p.reviewedCount, 0), published: sets.value.filter(s => s.status === 'published').length }));
@@ -1955,12 +1965,11 @@ else {
         /** @type {__VLS_StyleScopedClasses['active']} */ ;
         __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
         (__VLS_ctx.confirmedQuestions.length);
-        for (const [root] of __VLS_vFor((__VLS_ctx.rootKnowledgePoints))) {
-            __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-                key: (root.id),
-                ...{ class: "knowledge-group" },
-            });
-            /** @type {__VLS_StyleScopedClasses['knowledge-group']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+            ...{ class: "knowledge-tree" },
+        });
+        /** @type {__VLS_StyleScopedClasses['knowledge-tree']} */ ;
+        for (const [row] of __VLS_vFor((__VLS_ctx.visibleKnowledgePoints))) {
             __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
                 ...{ onClick: (...[$event]) => {
                         if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
@@ -1977,12 +1986,16 @@ else {
                             throw 0;
                         if (!(__VLS_ctx.page === 'questions'))
                             throw 0;
-                        return (__VLS_ctx.selectedKnowledgePoint = root.id);
+                        return (__VLS_ctx.selectedKnowledgePoint = row.point.id);
                         // @ts-ignore
-                        [confirmedQuestions, selectedKnowledgePoint, selectedKnowledgePoint, rootKnowledgePoints,];
+                        [confirmedQuestions, selectedKnowledgePoint, selectedKnowledgePoint, visibleKnowledgePoints,];
                     } },
-                ...{ class: ({ active: __VLS_ctx.selectedKnowledgePoint === root.id }) },
+                key: (row.point.id),
+                ...{ class: "knowledge-node" },
+                ...{ class: ({ active: __VLS_ctx.selectedKnowledgePoint === row.point.id }) },
+                ...{ style: ({ paddingLeft: `${10 + row.depth * 18}px` }) },
             });
+            /** @type {__VLS_StyleScopedClasses['knowledge-node']} */ ;
             /** @type {__VLS_StyleScopedClasses['active']} */ ;
             __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
                 ...{ onClick: (...[$event]) => {
@@ -2000,63 +2013,27 @@ else {
                             throw 0;
                         if (!(__VLS_ctx.page === 'questions'))
                             throw 0;
-                        return (__VLS_ctx.toggleKnowledge(root.id));
+                        return (row.hasChildren && __VLS_ctx.toggleKnowledge(row.point.id));
                         // @ts-ignore
                         [selectedKnowledgePoint, toggleKnowledge,];
                     } },
                 ...{ class: "knowledge-toggle" },
-                ...{ class: ({ expanded: __VLS_ctx.expandedKnowledge.has(root.id) }) },
+                ...{ class: ({ expanded: __VLS_ctx.expandedKnowledge.has(row.point.id), hidden: !row.hasChildren }) },
             });
             /** @type {__VLS_StyleScopedClasses['knowledge-toggle']} */ ;
             /** @type {__VLS_StyleScopedClasses['expanded']} */ ;
+            /** @type {__VLS_StyleScopedClasses['hidden']} */ ;
             let __VLS_210;
             /** @ts-ignore @type { | typeof __VLS_components.ChevronRight} */
             ChevronRight;
             // @ts-ignore
             const __VLS_211 = __VLS_asFunctionalComponent1(__VLS_210, new __VLS_210({}));
             const __VLS_212 = __VLS_211({}, ...__VLS_functionalComponentArgsRest(__VLS_211));
-            (root.name);
+            (row.point.name);
             __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
-            (root.questionCount);
-            if (__VLS_ctx.expandedKnowledge.has(root.id)) {
-                for (const [child] of __VLS_vFor((__VLS_ctx.knowledgeChildren(root.id)))) {
-                    __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
-                        ...{ onClick: (...[$event]) => {
-                                if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
-                                    throw 0;
-                                if (!!(!__VLS_ctx.current))
-                                    throw 0;
-                                if (!!(__VLS_ctx.page === 'dashboard'))
-                                    throw 0;
-                                if (!!(__VLS_ctx.page === 'tasks'))
-                                    throw 0;
-                                if (!!(__VLS_ctx.page === 'papers'))
-                                    throw 0;
-                                if (!!(__VLS_ctx.page === 'review'))
-                                    throw 0;
-                                if (!(__VLS_ctx.page === 'questions'))
-                                    throw 0;
-                                if (!(__VLS_ctx.expandedKnowledge.has(root.id)))
-                                    throw 0;
-                                return (__VLS_ctx.selectedKnowledgePoint = child.id);
-                                // @ts-ignore
-                                [selectedKnowledgePoint, expandedKnowledge, expandedKnowledge, knowledgeChildren,];
-                            } },
-                        key: (child.id),
-                        ...{ class: "knowledge-child" },
-                        ...{ class: ({ active: __VLS_ctx.selectedKnowledgePoint === child.id }) },
-                    });
-                    /** @type {__VLS_StyleScopedClasses['knowledge-child']} */ ;
-                    /** @type {__VLS_StyleScopedClasses['active']} */ ;
-                    (child.name);
-                    __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
-                    (child.questionCount);
-                    // @ts-ignore
-                    [selectedKnowledgePoint,];
-                }
-            }
+            (row.point.questionCount);
             // @ts-ignore
-            [];
+            [expandedKnowledge,];
         }
         if (!__VLS_ctx.knowledgePoints.length) {
             __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({

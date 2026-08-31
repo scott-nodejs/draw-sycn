@@ -10,6 +10,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -60,8 +63,14 @@ public class OrganizerWorkspaceService {
   }
 
   public List<Map<String, Object>> listKnowledgePoints(String userId) {
-    return jdbc.query("SELECT k.id,k.parent_id,k.subject,k.grade,k.name,k.sort_order,COUNT(DISTINCT CASE WHEN w.organizer_id=? AND q.deleted_at IS NULL THEN qkp.question_id END) question_count FROM knowledge_point k LEFT JOIN question_knowledge_point qkp ON qkp.knowledge_point_id=k.id LEFT JOIN teaching_question q ON q.id=qkp.question_id LEFT JOIN organizer_paper_workspace w ON w.paper_id=q.paper_id GROUP BY k.id,k.parent_id,k.subject,k.grade,k.name,k.sort_order ORDER BY k.subject,k.grade,k.sort_order,k.name",
-      (rs,n) -> { Map<String,Object> row=new LinkedHashMap<>(); row.put("id",rs.getString("id")); row.put("parentId",rs.getString("parent_id")); row.put("subject",rs.getString("subject")); row.put("grade",rs.getString("grade")); row.put("name",rs.getString("name")); row.put("sortOrder",rs.getInt("sort_order")); row.put("questionCount",rs.getInt("question_count")); return row; }, userId);
+    List<Map<String,Object>> points=jdbc.query("SELECT id,parent_id,subject,grade,name,sort_order FROM knowledge_point ORDER BY subject,grade,sort_order,name",
+      (rs,n) -> { Map<String,Object> row=new LinkedHashMap<>(); row.put("id",rs.getString("id")); row.put("parentId",rs.getString("parent_id")); row.put("subject",rs.getString("subject")); row.put("grade",rs.getString("grade")); row.put("name",rs.getString("name")); row.put("sortOrder",rs.getInt("sort_order")); return row; });
+    Map<String,String> parents=new HashMap<>(); Map<String,Set<String>> questionIds=new HashMap<>();
+    for(Map<String,Object> point:points){String id=String.valueOf(point.get("id"));Object parent=point.get("parentId");parents.put(id,parent==null?null:String.valueOf(parent));questionIds.put(id,new HashSet<>());}
+    jdbc.query("SELECT qkp.knowledge_point_id,qkp.question_id FROM question_knowledge_point qkp JOIN teaching_question q ON q.id=qkp.question_id AND q.deleted_at IS NULL JOIN organizer_paper_workspace w ON w.paper_id=q.paper_id WHERE w.organizer_id=?",
+      rs->{String current=rs.getString(1),questionId=rs.getString(2);Set<String> visited=new HashSet<>();while(current!=null&&visited.add(current)){Set<String> ids=questionIds.get(current);if(ids!=null)ids.add(questionId);current=parents.get(current);}},userId);
+    for(Map<String,Object> point:points)point.put("questionCount",questionIds.get(String.valueOf(point.get("id"))).size());
+    return points;
   }
 
   @Transactional
