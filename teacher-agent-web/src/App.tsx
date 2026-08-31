@@ -52,9 +52,11 @@ export function App() {
   const [problem, setProblem] = useState('')
   const [selectedProduct, setSelectedProduct] = useState<Product>(products[0])
   const [selectedQuestion, setSelectedQuestion] = useState(0)
+  const [productFilter, setProductFilter] = useState('全部')
   const [user, setUser] = useState(() => localStorage.getItem('teacher-agent-user') || '')
   const editorRef = useRef<Editor | null>(null)
   const roomId = useMemo(() => `agent-web-${createClientId()}`, [])
+  const visibleProducts = useMemo(() => products.filter(item => productFilter === '全部' || (productFilter === '初中数学' && item.grade.startsWith('初')) || (productFilter === '高中数学' && item.grade.startsWith('高')) || item.subject.includes(productFilter)), [productFilter])
 
   const requireLogin = (target: View) => { if (!user) { setPendingView(target); setView('login'); return false } setView(target); return true }
   const start = () => { const value = input.trim(); if (!value) return; setProblem(value); if (requireLogin('solve')) setView('solve') }
@@ -75,7 +77,7 @@ export function App() {
 
     {view === 'login' && <main className="login-page"><section className="login-card"><div className="login-brand"><img src="/bijian-logo-original.png"/><span><strong>欢迎来到笔尖云堂</strong><small>登录后继续你的学习旅程</small></span></div><form onSubmit={login}><label>手机号<input name="phone" inputMode="numeric" required placeholder="请输入手机号"/></label><label>密码<input name="password" type="password" required placeholder="请输入密码"/></label><button type="submit">登录并继续<ChevronRight size={17}/></button></form><p><LockKeyhole size={13}/>演示版本不会向服务器提交账号信息</p></section></main>}
 
-    {view === 'products' && <main className="content-page"><div className="page-heading"><span>教研资源库</span><h1>真人老师精选题库</h1><p>由一线教师整理、讲解与审核，按年级和专题持续更新。</p></div><div className="filter-row"><button className="active">全部</button><button>初中数学</button><button>高中数学</button><button>几何</button><button>函数</button></div><section className="product-grid">{products.map(item => <ProductCard key={item.id} item={item} onOpen={() => openProduct(item)}/>)}</section></main>}
+    {view === 'products' && <main className="content-page"><div className="library-signal"><i/><span>TEACHER CURATED</span><b>持续更新</b></div><div className="page-heading"><span>教研资源库</span><h1>真人老师精选题库</h1><p>由一线教师整理、讲解与审核，按年级和专题持续更新。</p></div><div className="library-toolbar"><div className="filter-row">{['全部','初中数学','高中数学','几何','函数'].map(filter => <button key={filter} className={productFilter===filter?'active':''} onClick={() => setProductFilter(filter)}>{filter}</button>)}</div><span>共 {visibleProducts.length} 个专题</span></div><section className="product-grid">{visibleProducts.map(item => <ProductCard key={item.id} item={item} onOpen={() => openProduct(item)}/>)}</section><div className="library-footnote"><span>内容均由认证教师上传</span><i/><span>平台教研团队审核</span><i/><span>支持时序板书回放</span></div></main>}
 
     {view === 'records' && <main className="content-page"><div className="page-heading"><span>LEARNING HISTORY</span><h1>我的解题记录</h1><p>继续上次的推导，或重新播放 AI 老师的完整板书。</p></div><section className="record-list">{[['在△ABC中，AB=AC，∠A=40°，求∠B','几何 · 等腰三角形','今天 16:42'],['已知抛物线 y=ax²-2a²x，求顶点坐标','函数 · 二次函数','昨天 20:18'],['解方程 x²-5x+6=0','代数 · 一元二次方程','8月19日']].map(([title,tag,time],index) => <article key={title}><span className="record-icon"><History size={19}/></span><div><strong>{title}</strong><small>{tag} · {time}</small></div><em>{index===0?'已完成':'学习中'}</em><button onClick={() => { setInput(title); setProblem(title); setView('solve') }}><Play size={14}/>继续</button></article>)}</section></main>}
 
