@@ -3,10 +3,11 @@ import katex from 'katex';
 const props = defineProps();
 function escape(value) { return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 function normalizeLatex(value) { return value.replace(/\f(?=rac\b)/g, '\\f').replace(/\r(?=ight\b)/g, '\\r').replace(/\t(?=(?:imes|heta|ext)\b)/g, '\\t').replace(/(^|[^\\A-Za-z])(sqrt|frac|dfrac|tfrac)\s*\{/g, '$1\\$2{'); }
+function renderLatex(value) { const expression = normalizeLatex(value.trim()); return katex.renderToString(expression, { throwOnError: false, strict: false, output: expression.includes('\\sqrt') ? 'mathml' : 'htmlAndMathml' }); }
 const html = computed(() => { const source = props.text || ''; let output = '', last = 0; const expression = /\$([^$]+)\$/g; let match; while ((match = expression.exec(source))) {
     output += escape(source.slice(last, match.index));
     try {
-        output += katex.renderToString(normalizeLatex(match[1].trim()), { throwOnError: false, strict: false });
+        output += renderLatex(match[1]);
     }
     catch {
         output += escape(match[0]);
