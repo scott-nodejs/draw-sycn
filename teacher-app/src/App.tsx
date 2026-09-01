@@ -88,7 +88,7 @@ import {
   getStoredSession,
   type AuthSession,
 } from "./services/authService";
-import { classroomApi, type ClassroomMember, type HandRaiseItem } from "./services/classroomApi";
+import { classroomApi, type ClassroomMember, type ClassroomRoom, type HandRaiseItem } from "./services/classroomApi";
 import { RtcRoomManager } from "./services/rtc/RtcRoomManager";
 import type { RtcConnectionState } from "./services/rtc/RtcProvider";
 import { connectClassroomSocket } from "./services/classroomSocket";
@@ -2635,10 +2635,12 @@ function TeachingStudio({
   const [rtcMuted,setRtcMuted]=useState(false);
   const [roomMembers,setRoomMembers]=useState<ClassroomMember[]>([]);
   const [handRaises,setHandRaises]=useState<HandRaiseItem[]>([]);
+  const [classroomRoom,setClassroomRoom]=useState<ClassroomRoom|null>(null);
+  const [changingRoomState,setChangingRoomState]=useState(false);
 
   useEffect(()=>{
     if(mode!=='live'||!syncRoomId)return
-    const refresh=()=>Promise.all([classroomApi.members(syncRoomId),classroomApi.handRaises(syncRoomId)]).then(([members,raises])=>{setRoomMembers(members);setHandRaises(raises)}).catch(()=>undefined)
+    const refresh=()=>Promise.all([classroomApi.room(syncRoomId),classroomApi.members(syncRoomId),classroomApi.handRaises(syncRoomId)]).then(([room,members,raises])=>{setClassroomRoom(room);setRoomMembers(members);setHandRaises(raises)}).catch(()=>undefined)
     void refresh();const timer=window.setInterval(()=>void refresh(),2000);return()=>window.clearInterval(timer)
   },[mode,syncRoomId])
   useEffect(()=>{
@@ -2646,7 +2648,7 @@ function TeachingStudio({
     const heartbeat=()=>void classroomApi.teacherHeartbeat(syncRoomId).catch(()=>undefined)
     heartbeat();const timer=window.setInterval(heartbeat,15000);return()=>window.clearInterval(timer)
   },[mode,syncRoomId])
-  useEffect(()=>{if(mode!=='live'||!syncRoomId)return;return connectClassroomSocket(syncRoomId,()=>{void Promise.all([classroomApi.members(syncRoomId),classroomApi.handRaises(syncRoomId)]).then(([members,raises])=>{setRoomMembers(members);setHandRaises(raises)})})},[mode,syncRoomId])
+  useEffect(()=>{if(mode!=='live'||!syncRoomId)return;return connectClassroomSocket(syncRoomId,event=>{if(event.event==='ROOM_PAUSED'){setClassroomRoom(room=>room?{...room,status:'PAUSED'}:room);void rtcRef.current?.disconnect().catch(()=>undefined);rtcRef.current=null;setRtcState('DISCONNECTED')}if(event.event==='ROOM_RESUMED')setClassroomRoom(room=>room?{...room,status:'ACTIVE'}:room);void Promise.all([classroomApi.room(syncRoomId),classroomApi.members(syncRoomId),classroomApi.handRaises(syncRoomId)]).then(([room,members,raises])=>{setClassroomRoom(room);setRoomMembers(members);setHandRaises(raises)})})},[mode,syncRoomId])
   useEffect(()=>()=>{void rtcRef.current?.disconnect().catch(()=>undefined)},[])
 
   useEffect(() => {
@@ -2703,7 +2705,7 @@ function TeachingStudio({
     return () => window.clearInterval(timer);
   }, [recording]);
   const start = async () => {
-    if (!editorRef.current || recording || starting) return;
+    if (!editorRef.current || recording || starting || classroomRoom?.status==='PAUSED') return;
     setStarting(true);
     setAudioError(null);
     setAudioBlob(null);
@@ -2737,6 +2739,20 @@ function TeachingStudio({
       setStarting(false);
     }
   };
+  const toggleClassroomPause=async()=>{
+    if(mode!=='live'||!syncRoomId||changingRoomState)return
+    setChangingRoomState(true);setAudioError(null)
+    try{
+      if(classroomRoom?.status==='PAUSED'){
+        const room=await classroomApi.resume(syncRoomId);setClassroomRoom(room)
+        if(recording){const rtc=new RtcRoomManager();rtcRef.current=rtc;rtc.onStateChange(setRtcState);await rtc.connect(await classroomApi.rtcToken(syncRoomId));await rtc.startMicrophone();await classroomApi.connected(syncRoomId);setRtcMuted(false)}
+      }else{
+        const room=await classroomApi.pause(syncRoomId);setClassroomRoom(room)
+        await rtcRef.current?.disconnect().catch(()=>undefined);rtcRef.current=null;setRtcState('DISCONNECTED');await classroomApi.rtcLeave(syncRoomId).catch(()=>undefined)
+      }
+    }catch(cause){setAudioError(cause instanceof Error?cause.message:'课堂状态切换失败')}
+    finally{setChangingRoomState(false)}
+  }
   const stop = async (confirmed=false) => {
     if (!editorRef.current || !recorderRef.current) return;
     if(mode==='live'&&!confirmed&&!window.confirm('确认结束本次课堂？结束后所有学生将自动退出同步课堂。'))return;
@@ -2966,7 +2982,7 @@ function TeachingStudio({
               <StatusBadge status="success">正常</StatusBadge>
             </div>
             {mode === "live" ? (
-              <><div className="viewer-metric">
+              <><div className="device-row"><span><Radio size={17}/>课堂状态</span><StatusBadge status={classroomRoom?.status==='PAUSED'?'warning':'success'}>{classroomRoom?.status==='PAUSED'?'已暂停':'进行中'}</StatusBadge></div><button className={`button ${classroomRoom?.status==='PAUSED'?'primary':'secondary'} full`} disabled={changingRoomState} onClick={()=>void toggleClassroomPause()}>{classroomRoom?.status==='PAUSED'?<Play size={16}/>:<Pause size={16}/>} {changingRoomState?'处理中':classroomRoom?.status==='PAUSED'?'继续课堂':'暂停课堂'}</button><div className="viewer-metric">
                 <Users size={18} />
                 <div>
                   <strong>{roomMembers.filter(item=>item.presenceStatus==='ONLINE').length}</strong>
@@ -2975,7 +2991,7 @@ function TeachingStudio({
               </div><button className="button secondary full" disabled={rtcState!=='CONNECTED'} onClick={async()=>{const next=!rtcMuted;if(next)await rtcRef.current?.mute();else await rtcRef.current?.unmute();await classroomApi.mute(syncRoomId,next);setRtcMuted(next)}}><Mic size={16}/>{rtcMuted?'取消静音':'静音麦克风'}</button></>
             ) : null}
             {!recording ? (
-              <button className="button primary full" onClick={start}>
+              <button className="button primary full" disabled={classroomRoom?.status==='PAUSED'} onClick={start}>
                 <Radio size={17} />
                 {mode === "live" ? "开始直播并录制" : "开始录制"}
               </button>
@@ -3869,7 +3885,7 @@ function TeacherSyncRoomsPage() {
   const load=useCallback(async()=>{setLoading(true);setError(null);try{setRooms(await teachingRepository.listTeacherSyncRooms())}catch(cause){setError(cause instanceof Error?cause.message:"加载同步课堂记录失败")}finally{setLoading(false)}},[]);
   useEffect(()=>{void load()},[load]);
   const filtered=status==="ALL"?rooms:rooms.filter(room=>room.status===status);
-  return <main className="page-content"><PageHeader title="同步课堂" description="集中管理进行中、未开始和已结束的同步课堂。" actions={<button className="button secondary" onClick={()=>void load()}><RotateCcw size={16}/>刷新</button>}/>{error?<ErrorBanner message={error} onRetry={()=>void load()}/>:null}<div className="class-content-tabs teacher-room-tabs"><button className={status==="ALL"?"active":""} onClick={()=>setStatus("ALL")}>全部 {rooms.length}</button><button className={status==="ACTIVE"?"active":""} onClick={()=>setStatus("ACTIVE")}>进行中 {rooms.filter(room=>room.status==="ACTIVE").length}</button><button className={status==="NOT_STARTED"?"active":""} onClick={()=>setStatus("NOT_STARTED")}>未开始 {rooms.filter(room=>room.status==="NOT_STARTED").length}</button><button className={status==="ENDED"?"active":""} onClick={()=>setStatus("ENDED")}>已结束 {rooms.filter(room=>room.status==="ENDED").length}</button></div><section className="content-card teacher-sync-history">{loading?<LoadingState/>:<div className="simple-list">{filtered.length?filtered.map(room=><div key={room.id}><div><strong>{room.title}</strong><span>{room.groupName} · {room.createdAt.replace("T"," ")} {room.currentQuestion?`· 当前第 ${room.currentQuestion.number} 题`:""}</span></div><StatusBadge status={room.status==="ACTIVE"?"success":room.status==="NOT_STARTED"?"warning":"neutral"}>{room.status==="ACTIVE"?"进行中":room.status==="NOT_STARTED"?"未开始":"已结束"}</StatusBadge></div>):<p className="muted">当前分类没有课堂记录</p>}</div>}</section></main>;
+  return <main className="page-content"><PageHeader title="同步课堂" description="集中管理进行中、暂停、未开始和已结束的同步课堂。" actions={<button className="button secondary" onClick={()=>void load()}><RotateCcw size={16}/>刷新</button>}/>{error?<ErrorBanner message={error} onRetry={()=>void load()}/>:null}<div className="class-content-tabs teacher-room-tabs"><button className={status==="ALL"?"active":""} onClick={()=>setStatus("ALL")}>全部 {rooms.length}</button><button className={status==="ACTIVE"?"active":""} onClick={()=>setStatus("ACTIVE")}>进行中 {rooms.filter(room=>room.status==="ACTIVE").length}</button><button className={status==="PAUSED"?"active":""} onClick={()=>setStatus("PAUSED")}>已暂停 {rooms.filter(room=>room.status==="PAUSED").length}</button><button className={status==="NOT_STARTED"?"active":""} onClick={()=>setStatus("NOT_STARTED")}>未开始 {rooms.filter(room=>room.status==="NOT_STARTED").length}</button><button className={status==="ENDED"?"active":""} onClick={()=>setStatus("ENDED")}>已结束 {rooms.filter(room=>room.status==="ENDED").length}</button></div><section className="content-card teacher-sync-history">{loading?<LoadingState/>:<div className="simple-list">{filtered.length?filtered.map(room=><div key={room.id}><div><strong>{room.title}</strong><span>{room.groupName} · {room.createdAt.replace("T"," ")} {room.currentQuestion?`· 当前第 ${room.currentQuestion.number} 题`:""}</span></div><StatusBadge status={room.status==="ACTIVE"?"success":room.status==="PAUSED"?"warning":room.status==="NOT_STARTED"?"warning":"neutral"}>{room.status==="ACTIVE"?"进行中":room.status==="PAUSED"?"已暂停":room.status==="NOT_STARTED"?"未开始":"已结束"}</StatusBadge></div>):<p className="muted">当前分类没有课堂记录</p>}</div>}</section></main>;
 }
 
 function ClassGroupManager({ papers, onStartBoardSync }: { papers: Paper[]; onStartBoardSync: (groupId: string, studentIds: string[]) => Promise<void> }) {
@@ -4243,12 +4259,12 @@ function TaskAcceptDialog({
 function StudentLearningPortal({ loading, studentName, onLogout, onSwitchPortal }: { loading: boolean; studentName: string; onLogout: () => void; onSwitchPortal: () => void }) {
   const [groups,setGroups]=useState<ClassGroup[]>([]);const [assignments,setAssignments]=useState<ClassAssignment[]>([]);const [rooms,setRooms]=useState<SyncRoom[]>([]);const [code,setCode]=useState("");const [message,setMessage]=useState("");const [teacherFilter,setTeacherFilter]=useState("");const [activeAssignment,setActiveAssignment]=useState<ClassAssignment|null>(null);const [activeRoom,setActiveRoom]=useState<SyncRoom|null>(null);const [view,setView]=useState<"board"|"tasks"|"rooms"|"classes"|"solve"|"sync">("board");
   const load=useCallback(async()=>{const [groupItems,assignmentItems,roomItems]=await Promise.all([teachingRepository.listStudentClassGroups(),teachingRepository.listStudentClassAssignments(),teachingRepository.listStudentSyncRooms()]);setGroups(groupItems);setAssignments(assignmentItems);setRooms(roomItems);},[]);useEffect(()=>{void load().catch((cause)=>setMessage(cause instanceof Error?cause.message:"加载学习数据失败"));},[load]);
-  if(loading)return <div className="student-portal"><LoadingState/></div>;if(view==="sync"&&activeRoom)return <StudentLiveRoom roomId={activeRoom.id} title={activeRoom.title} teacherName={activeRoom.teacherName} questions={[]} onExit={()=>{setActiveRoom(null);setView("rooms");}}/>;if(view==="solve"&&activeAssignment)return <StudentSolveBoard assignment={activeAssignment} onExit={()=>setView("tasks")} onSubmitted={()=>{setMessage("作答已提交给老师");setView("tasks");}}/>;
+  if(loading)return <div className="student-portal"><LoadingState/></div>;if(view==="sync"&&activeRoom)return <StudentLiveRoom roomId={activeRoom.id} title={activeRoom.title} teacherName={activeRoom.teacherName} initialStatus={activeRoom.status} questions={[]} onExit={()=>{setActiveRoom(null);setView("rooms");void load();}}/>;if(view==="solve"&&activeAssignment)return <StudentSolveBoard assignment={activeAssignment} onExit={()=>setView("tasks")} onSubmitted={()=>{setMessage("作答已提交给老师");setView("tasks");}}/>;
   const teachers=Array.from(new Map(assignments.map((item)=>[item.teacherName||item.groupName,item.teacherName||item.groupName])).values());const [firstTeacher]=teachers;const selectedTeacher=teachers.includes(message)?message:firstTeacher;const visibleAssignments=selectedTeacher?assignments.filter((item)=>(item.teacherName||item.groupName)===selectedTeacher):assignments;
   return <div className="student-portal student-learning-portal"><header className="student-topbar"><div className="student-brand"><span><Sparkles size={18}/></span><strong>知问课堂</strong></div><nav><button className={view==="board"?"active":""} onClick={()=>setView("board")}>学习首页</button><button className={view==="tasks"?"active":""} onClick={()=>setView("tasks")}>学习任务</button><button className={view==="rooms"?"active":""} onClick={()=>{setView("rooms");void load();}}>同步房间{rooms.length?`（${rooms.length}）`:""}</button><button className={view==="classes"?"active":""} onClick={()=>setView("classes")}>我的班级</button></nav><div><button className="portal-switch" onClick={onSwitchPortal}>返回老师端</button><button className="portal-switch" onClick={onLogout}>退出</button><div className="avatar">{studentName.slice(0,1)}</div></div></header>
     {view==="board"?<main className="student-content student-stats-dashboard"><div className="student-dashboard-title"><div><span>学习概览</span><h1>{studentName}，你好</h1><p>查看班级任务和同步课堂的最新情况。</p></div><button className="student-primary" onClick={()=>setView(rooms.length?"rooms":"tasks")}>{rooms.length?<><Radio size={17}/>进入同步房间</>:<><ListChecks size={17}/>查看学习任务</>}</button></div><section className="student-stat-cards"><article><span><Users size={18}/></span><div><small>我的班级</small><strong>{groups.length}</strong><p>已加入班级</p></div></article><article><span><ListChecks size={18}/></span><div><small>学习任务</small><strong>{assignments.length}</strong><p>老师下发内容</p></div></article><article><span><Radio size={18}/></span><div><small>同步房间</small><strong>{rooms.length}</strong><p>{rooms.length?"有课堂正在进行":"暂无开放房间"}</p></div></article><article><span><FileCheck2 size={18}/></span><div><small>学习老师</small><strong>{teachers.length}</strong><p>来自不同班级</p></div></article></section><section className="student-dashboard-grid"><article className="student-dashboard-panel"><div className="student-panel-heading"><div><h2>近期任务</h2><p>老师最近下发的学习内容</p></div><button onClick={()=>setView("tasks")}>查看全部<ChevronRight size={15}/></button></div><div className="student-recent-tasks">{assignments.slice(0,5).map((item)=><button key={item.id} onClick={()=>{setActiveAssignment(item);setView("solve");}}><span className="student-assignment-icon"><FileText size={17}/></span><div><strong>{item.title}</strong><small>{item.teacherName||item.groupName} · {item.contentType==="paper"?"批次":"试题"}</small></div><ChevronRight size={16}/></button>)}{!assignments.length?<div className="student-empty"><FileText size={24}/><strong>暂无学习任务</strong></div>:null}</div></article><article className="student-dashboard-panel"><div className="student-panel-heading"><div><h2>学习分布</h2><p>当前收到的内容类型</p></div></div><div className="student-progress-list"><div><span>单道试题</span><strong>{assignments.filter((item)=>item.contentType==="question").length}</strong><i><b style={{width:`${assignments.length?assignments.filter((item)=>item.contentType==="question").length/assignments.length*100:0}%`}}/></i></div><div><span>试卷批次</span><strong>{assignments.filter((item)=>item.contentType==="paper").length}</strong><i><b style={{width:`${assignments.length?assignments.filter((item)=>item.contentType==="paper").length/assignments.length*100:0}%`}}/></i></div></div><div className="student-dashboard-room"><span className={rooms.length?"live-dot":"idle-dot"}/><div><strong>{rooms.length?`${rooms.length} 个同步房间开放中`:"当前没有同步课堂"}</strong><small>{rooms.length?"点击进入房间实时查看老师看板":"老师发起后会自动出现在同步房间"}</small></div></div></article></section></main>:null}
     {view==="tasks"?<main className="student-page student-task-page"><aside><h2>老师</h2>{teachers.length?teachers.map((teacher)=><button key={teacher} className={selectedTeacher===teacher?"active":""} onClick={()=>setMessage(teacher)}><span>{teacher.slice(0,1)}</span><div><strong>{teacher}</strong><small>{assignments.filter((item)=>(item.teacherName||item.groupName)===teacher).length} 个任务</small></div></button>):<div className="student-empty">暂无老师任务</div>}</aside><section><div className="student-page-title"><div><h1>下发的试题</h1><p>{selectedTeacher?`${selectedTeacher}下发的学习内容`:"老师下发的内容会显示在这里"}</p></div><span>{visibleAssignments.length} 个任务</span></div><div className="student-assignment-list">{visibleAssignments.length?visibleAssignments.map((item)=><article key={item.id}><div className="student-assignment-icon"><FileText size={20}/></div><div><span>{item.groupName} · {item.contentType==="paper"?"批次":"试题"}</span><strong>{item.title}</strong><small>{item.createdAt.replace("T"," ")}</small></div><button className="student-primary" onClick={()=>{setActiveAssignment(item);setView("solve");}}>进入解题</button></article>):<div className="student-empty student-task-empty"><FileText size={26}/><strong>暂无学习任务</strong></div>}</div></section></main>:null}
-    {view==="rooms"?<main className="student-content student-rooms-page"><div className="student-page-title"><div><h1>同步房间</h1><p>老师邀请后房间会出现在这里，进入后实时查看老师看板。</p></div><button className="student-ghost" onClick={()=>void load()}>刷新房间</button></div><div className="student-room-cards">{rooms.length?rooms.map((room)=><article key={room.id}><div className="student-room-status"><span className="live-dot"/>进行中</div><h2>{room.title}</h2><p>{room.teacherName} · {room.groupName}</p><small>创建于 {room.createdAt.replace("T"," ")}</small><button className="student-primary" onClick={()=>{setActiveRoom(room);setView("sync");}}>进入房间</button></article>):<div className="student-empty"><Radio size={28}/><strong>当前没有同步房间</strong><span>老师发起后会自动显示</span></div>}</div></main>:null}
+    {view==="rooms"?<main className="student-content student-rooms-page"><div className="student-page-title"><div><h1>同步房间</h1><p>老师邀请后房间会出现在这里，进入后实时查看老师看板。</p></div><button className="student-ghost" onClick={()=>void load()}>刷新房间</button></div><div className="student-room-cards">{rooms.length?rooms.map((room)=><article key={room.id} className={room.status==="PAUSED"?"paused":""}><div className="student-room-status"><span className={room.status==="PAUSED"?"idle-dot":"live-dot"}/>{room.status==="PAUSED"?"课堂暂停":"进行中"}</div><h2>{room.title}</h2><p>{room.teacherName} · {room.groupName}</p><small>创建于 {room.createdAt.replace("T"," ")}</small><button className="student-primary" onClick={()=>{setActiveRoom(room);setView("sync");}}>{room.status==="PAUSED"?"查看课堂":"进入房间"}</button></article>):<div className="student-empty"><Radio size={28}/><strong>当前没有同步房间</strong><span>老师发起后会自动显示</span></div>}</div></main>:null}
     {view==="classes"?<main className="student-content student-classes-page"><div className="student-page-title"><div><h1>我的班级</h1><p>使用老师提供的邀请码加入班级</p></div></div><section className="student-class-management"><div className="student-my-groups"><div className="student-group-cards">{groups.length?groups.map((group)=><article key={group.id}><span>{group.grade||"班级"}</span><strong>{group.name}</strong><small>{group.memberCount} 名同学</small></article>):<div className="student-empty"><Users size={25}/><strong>还没有加入班级</strong></div>}</div></div><div className="student-join-panel"><div><span className="student-panel-icon"><Plus size={20}/></span><h2>加入班级</h2><p>输入 8 位邀请码</p></div><div className="student-join-class"><input value={code} onChange={(event)=>setCode(event.target.value.toUpperCase())} placeholder="输入邀请码" maxLength={8}/><button className="student-primary" disabled={code.length<8} onClick={()=>void teachingRepository.joinClassGroup(code).then(()=>{setCode("");return load();})}>加入</button></div></div></section></main>:null}
   </div>;
 }
@@ -4902,22 +4918,74 @@ function StudentLiveRoom({
   roomId = defaultSyncRoomId,
   title = "老师同步看板",
   teacherName = "老师",
+  initialStatus = "ACTIVE",
   questions,
   onExit,
 }: {
   roomId?: string;
   title?: string;
   teacherName?: string;
+  initialStatus?: SyncRoom["status"];
   questions: Question[];
   onExit: () => void;
 }) {
+  const [roomStatus, setRoomStatus] = useState<SyncRoom["status"]>(initialStatus);
+  const [handRaised, setHandRaised] = useState(false);
+  const [actionPending, setActionPending] = useState(false);
+  const [roomMessage, setRoomMessage] = useState("");
   const store = useSync({
     uri: createSyncUri(roomId, "viewer"),
     assets: syncAssetStore,
   });
   const current = questions[1] ?? questions[0];
+  useEffect(() => {
+    let active = true;
+    void classroomApi.join(roomId).then((room) => {
+      if (active) setRoomStatus(room.status);
+    }).catch((cause) => {
+      if (active) setRoomMessage(cause instanceof Error ? cause.message : "进入课堂失败");
+    });
+    const heartbeat = window.setInterval(() => void classroomApi.heartbeat(roomId).catch(() => undefined), 15000);
+    const disconnectSocket = connectClassroomSocket(roomId, (event) => {
+      if (event.event === "ROOM_PAUSED") {
+        setRoomStatus("PAUSED");
+        setHandRaised(false);
+        setRoomMessage("老师暂停了课堂，恢复后可继续互动");
+        void classroomApi.rtcLeave(roomId).catch(() => undefined);
+      }
+      if (event.event === "ROOM_RESUMED") {
+        setRoomStatus("ACTIVE");
+        setRoomMessage("");
+      }
+      if (event.event === "ROOM_ENDED") {
+        setRoomStatus("ENDED");
+        setHandRaised(false);
+        setRoomMessage("本次课堂已结束");
+      }
+    });
+    return () => {
+      active = false;
+      window.clearInterval(heartbeat);
+      disconnectSocket();
+      void classroomApi.leave(roomId).catch(() => undefined);
+    };
+  }, [roomId]);
+  const toggleHandRaise = async () => {
+    if (roomStatus !== "ACTIVE" || actionPending) return;
+    setActionPending(true);
+    setRoomMessage("");
+    try {
+      if (handRaised) await classroomApi.cancelHandRaise(roomId);
+      else await classroomApi.raiseHand(roomId);
+      setHandRaised((value) => !value);
+    } catch (cause) {
+      setRoomMessage(cause instanceof Error ? cause.message : "举手操作失败");
+    } finally {
+      setActionPending(false);
+    }
+  };
   return (
-    <div className="student-room">
+    <div className={`student-room ${roomStatus === "PAUSED" ? "is-paused" : ""}`}>
       <header>
         <div>
           <button className="icon-button" onClick={onExit}>
@@ -4925,17 +4993,18 @@ function StudentLiveRoom({
           </button>
           <div>
             <strong>{title}</strong>
-            <span>{teacherName} · 课堂内容实时同步中</span>
+            <span>{teacherName} · {roomStatus === "PAUSED" ? "课堂暂时停止互动" : roomStatus === "ENDED" ? "课堂已结束" : "课堂内容实时同步中"}</span>
           </div>
         </div>
         <div className="student-live-status">
-          <span className="live-dot" />
-          同步中
+          <span className={roomStatus === "ACTIVE" ? "live-dot" : "idle-dot"} />
+          {roomStatus === "ACTIVE" ? "同步中" : roomStatus === "PAUSED" ? "已暂停" : "已结束"}
         </div>
         <button className="button secondary">课堂反馈</button>
       </header>
       <main>
         <section className="viewer-board">
+          {roomStatus !== "ACTIVE" ? <div className="student-room-state"><Pause size={24}/><strong>{roomStatus === "PAUSED" ? "课堂已暂停" : "课堂已结束"}</strong><span>{roomStatus === "PAUSED" ? "画板保持可查看，等待老师恢复课堂" : "可以返回同步房间列表"}</span></div> : null}
           <div className="question-overlay student">
             <span>
               第 {current?.number} 题 · {current?.type}
@@ -4991,8 +5060,8 @@ function StudentLiveRoom({
           </section>
           <div className="student-question-box">
             <strong>有疑问？</strong>
-            <p>举手后老师可以在同步讲题时看到。</p>
-            <button className="button secondary full">举手提问</button>
+            <p>{roomMessage || (handRaised ? "已通知老师，正在等待回应。" : "举手后老师可以在同步讲题时看到。")}</p>
+            <button className={`button ${handRaised ? "primary" : "secondary"} full`} disabled={roomStatus !== "ACTIVE" || actionPending} onClick={() => void toggleHandRaise()}>{actionPending ? "处理中" : roomStatus === "PAUSED" ? "课堂暂停中" : roomStatus === "ENDED" ? "课堂已结束" : handRaised ? "取消举手" : "举手提问"}</button>
           </div>
         </aside>
       </main>

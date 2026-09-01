@@ -13,6 +13,8 @@ public class ClassroomRoomController {
 
   @GetMapping public Map<String,Object> room(@PathVariable String roomId,@RequestHeader("X-User-Id") String userId,@RequestHeader("X-User-Role") String role){return rooms.room(roomId,userId,role);}
   @PostMapping("/start") public Map<String,Object> start(@PathVariable String roomId,@RequestHeader("X-User-Id") String teacherId,@RequestHeader("X-User-Role") String role){requireTeacher(role);return rooms.start(roomId,teacherId);}
+  @PostMapping("/pause") public Map<String,Object> pause(@PathVariable String roomId,@RequestHeader("X-User-Id") String teacherId,@RequestHeader("X-User-Role") String role){requireTeacher(role);return rooms.pause(roomId,teacherId);}
+  @PostMapping("/resume") public Map<String,Object> resume(@PathVariable String roomId,@RequestHeader("X-User-Id") String teacherId,@RequestHeader("X-User-Role") String role){requireTeacher(role);return rooms.resume(roomId,teacherId);}
   @PostMapping("/end") public Map<String,Object> end(@PathVariable String roomId,@RequestHeader("X-User-Id") String teacherId,@RequestHeader("X-User-Role") String role){requireTeacher(role);return rooms.end(roomId,teacherId);}
   @PostMapping("/join") public Map<String,Object> join(@PathVariable String roomId,@RequestHeader("X-User-Id") String userId,@RequestHeader("X-User-Role") String role){return rooms.join(roomId,userId,role);}
   @PostMapping("/heartbeat") @ResponseStatus(HttpStatus.NO_CONTENT) public void heartbeat(@PathVariable String roomId,@RequestHeader("X-User-Id") String studentId,@RequestHeader("X-User-Role") String role){requireStudent(role);rooms.heartbeat(roomId,studentId);}

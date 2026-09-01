@@ -40,10 +40,37 @@ public class ClassroomRoomService {
   }
 
   @Transactional
+  public Map<String,Object> pause(String roomId, String teacherId) {
+    assertTeacher(roomId, teacherId);
+    int changed = jdbc.update("UPDATE class_sync_room SET status='PAUSED',paused_at=?,pause_count=pause_count+1,teacher_heartbeat_at=? WHERE id=? AND status='ACTIVE'", now(), now(), roomId);
+    if (changed == 0) {
+      String status = jdbc.queryForObject("SELECT status FROM class_sync_room WHERE id=?", String.class, roomId);
+      if (!"PAUSED".equals(status)) throw conflict("课堂当前不能暂停");
+    } else {
+      jdbc.update("UPDATE class_sync_room_member SET can_publish_audio=0 WHERE room_id=?", roomId);
+      jdbc.update("UPDATE class_sync_hand_raise SET status='CANCELLED',ended_at=? WHERE room_id=? AND status IN ('WAITING','INVITED','CONNECTING','CONNECTED')", now(), roomId);
+      jdbc.update("UPDATE class_sync_rtc_session SET status='DISCONNECTED',left_at=? WHERE room_id=? AND status<>'DISCONNECTED'", now(), roomId);
+      event(roomId, "ROOM_PAUSED", teacherId, "", null);
+    }
+    return roomRow(roomId);
+  }
+
+  @Transactional
+  public Map<String,Object> resume(String roomId, String teacherId) {
+    assertTeacher(roomId, teacherId);
+    int changed = jdbc.update("UPDATE class_sync_room SET status='ACTIVE',teacher_heartbeat_at=? WHERE id=? AND status='PAUSED'", now(), roomId);
+    if (changed == 0) {
+      String status = jdbc.queryForObject("SELECT status FROM class_sync_room WHERE id=?", String.class, roomId);
+      if (!"ACTIVE".equals(status)) throw conflict("课堂当前不能继续");
+    } else event(roomId, "ROOM_RESUMED", teacherId, "", null);
+    return roomRow(roomId);
+  }
+
+  @Transactional
   public void teacherHeartbeat(String roomId, String teacherId) {
     assertTeacher(roomId, teacherId);
-    int changed = jdbc.update("UPDATE class_sync_room SET teacher_heartbeat_at=? WHERE id=? AND status='ACTIVE'", now(), roomId);
-    if (changed == 0) throw conflict("课堂当前不是进行中状态");
+    int changed = jdbc.update("UPDATE class_sync_room SET teacher_heartbeat_at=? WHERE id=? AND status IN ('ACTIVE','PAUSED')", now(), roomId);
+    if (changed == 0) throw conflict("课堂当前未开始或已经结束");
   }
 
   @Transactional
@@ -64,7 +91,7 @@ public class ClassroomRoomService {
   public Map<String,Object> join(String roomId, String userId, String role) {
     assertAccess(roomId, userId, role);
     String status = jdbc.queryForObject("SELECT status FROM class_sync_room WHERE id=?", String.class, roomId);
-    if (!"ACTIVE".equals(status)) throw conflict("课堂尚未开始或已经结束");
+    if (!"ACTIVE".equals(status) && !"PAUSED".equals(status)) throw conflict("课堂尚未开始或已经结束");
     if ("student".equals(role)) jdbc.update("UPDATE class_sync_room_member SET presence_status='ONLINE',joined_at=COALESCE(joined_at,?),left_at=NULL,last_seen_at=? WHERE room_id=? AND student_id=?", now(), now(), roomId, userId);
     event(roomId, "USER_JOINED", userId, "", singleton("role", role));
     return roomRow(roomId);
@@ -102,7 +129,7 @@ public class ClassroomRoomService {
     boolean publish="teacher".equals(role)||Boolean.TRUE.equals(jdbc.queryForObject("SELECT can_publish_audio FROM class_sync_room_member WHERE room_id=? AND student_id=?",Boolean.class,roomId,userId));
     return trtc.issue(roomId,userId,publish);
   }
-  public Map<String,Object> canvasAccess(String roomId,String userId,String role){assertAccess(roomId,userId,role);boolean write="teacher".equals(role)||Boolean.TRUE.equals(jdbc.queryForObject("SELECT can_write_canvas FROM class_sync_room_member WHERE room_id=? AND student_id=?",Boolean.class,roomId,userId));Map<String,Object> result=new LinkedHashMap<>();result.put("userId",userId);result.put("role",role);result.put("canWrite",write);return result;}
+  public Map<String,Object> canvasAccess(String roomId,String userId,String role){assertAccess(roomId,userId,role);String status=jdbc.queryForObject("SELECT status FROM class_sync_room WHERE id=?",String.class,roomId);boolean write="teacher".equals(role)||("ACTIVE".equals(status)&&Boolean.TRUE.equals(jdbc.queryForObject("SELECT can_write_canvas FROM class_sync_room_member WHERE room_id=? AND student_id=?",Boolean.class,roomId,userId)));Map<String,Object> result=new LinkedHashMap<>();result.put("userId",userId);result.put("role",role);result.put("canWrite",write);result.put("roomStatus",status);return result;}
 
   @Transactional public Map<String,Object> raiseHand(String roomId,String studentId){
     assertAccess(roomId,studentId,"student");assertActive(roomId);
@@ -174,8 +201,8 @@ public class ClassroomRoomService {
 
   private Map<String,Object> roomRow(String roomId) {
     markStaleOffline(roomId);
-    return jdbc.queryForObject("SELECT r.id,r.title,r.group_id,g.name,r.teacher_id,u.display_name,r.status,r.started_at,r.ended_at,r.max_rtc_seats,(SELECT COUNT(*) FROM class_sync_room_member m WHERE m.room_id=r.id AND m.presence_status='ONLINE') online_count,(SELECT COUNT(*) FROM class_sync_room_member m WHERE m.room_id=r.id AND m.can_publish_audio=1) rtc_seat_count FROM class_sync_room r JOIN class_group g ON g.id=r.group_id JOIN user_account u ON u.id=r.teacher_id WHERE r.id=?",
-      (rs,n)->{Map<String,Object> row=new LinkedHashMap<>();row.put("roomId",rs.getString(1));row.put("roomName",rs.getString(2));row.put("classId",rs.getString(3));row.put("className",rs.getString(4));row.put("teacherId",rs.getString(5));row.put("teacherName",rs.getString(6));row.put("status",rs.getString(7));row.put("startedAt",rs.getTimestamp(8)==null?null:rs.getTimestamp(8).toLocalDateTime().toString());row.put("endedAt",rs.getTimestamp(9)==null?null:rs.getTimestamp(9).toLocalDateTime().toString());row.put("maxRtcSeats",rs.getInt(10));row.put("onlineCount",rs.getInt(11));row.put("currentRtcSeatCount",rs.getInt(12));return row;},roomId);
+    return jdbc.queryForObject("SELECT r.id,r.title,r.group_id,g.name,r.teacher_id,u.display_name,r.status,r.started_at,r.paused_at,r.ended_at,r.pause_count,r.max_rtc_seats,(SELECT COUNT(*) FROM class_sync_room_member m WHERE m.room_id=r.id AND m.presence_status='ONLINE') online_count,(SELECT COUNT(*) FROM class_sync_room_member m WHERE m.room_id=r.id AND m.can_publish_audio=1) rtc_seat_count FROM class_sync_room r JOIN class_group g ON g.id=r.group_id JOIN user_account u ON u.id=r.teacher_id WHERE r.id=?",
+      (rs,n)->{Map<String,Object> row=new LinkedHashMap<>();row.put("roomId",rs.getString(1));row.put("roomName",rs.getString(2));row.put("classId",rs.getString(3));row.put("className",rs.getString(4));row.put("teacherId",rs.getString(5));row.put("teacherName",rs.getString(6));row.put("status",rs.getString(7));row.put("startedAt",rs.getTimestamp(8)==null?null:rs.getTimestamp(8).toLocalDateTime().toString());row.put("pausedAt",rs.getTimestamp(9)==null?null:rs.getTimestamp(9).toLocalDateTime().toString());row.put("endedAt",rs.getTimestamp(10)==null?null:rs.getTimestamp(10).toLocalDateTime().toString());row.put("pauseCount",rs.getInt(11));row.put("maxRtcSeats",rs.getInt(12));row.put("onlineCount",rs.getInt(13));row.put("currentRtcSeatCount",rs.getInt(14));return row;},roomId);
   }
 
   private void markStaleOffline(String roomId) { jdbc.update("UPDATE class_sync_room_member SET presence_status='OFFLINE',left_at=COALESCE(left_at,?) WHERE room_id=? AND presence_status='ONLINE' AND (last_seen_at IS NULL OR last_seen_at<?)", now(), roomId, Timestamp.valueOf(LocalDateTime.now().minusSeconds(45))); }

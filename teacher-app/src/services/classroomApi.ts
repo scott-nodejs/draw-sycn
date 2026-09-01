@@ -4,16 +4,25 @@ const BASE=import.meta.env.VITE_API_BASE_URL||'http://127.0.0.1:8788/api'
 export type ClassroomMember={studentId:string;studentName:string;presenceStatus:'ONLINE'|'OFFLINE';canPublishAudio:boolean;canWriteCanvas:boolean}
 export type HandRaiseItem={id:string;studentId:string;studentName:string;status:'WAITING'|'INVITED'|'CONNECTING'|'CONNECTED';raisedAt:string;waitSeconds:number}
 export type ClassroomEvent={id:number;event:string;roomId:string;userId:string;targetUserId:string;timestamp:number;payload:Record<string,unknown>}
+export type ClassroomRoom={roomId:string;roomName:string;classId:string;className:string;teacherId:string;teacherName:string;status:'NOT_STARTED'|'ACTIVE'|'PAUSED'|'ENDED';startedAt?:string;pausedAt?:string;endedAt?:string;pauseCount:number;onlineCount:number;currentRtcSeatCount:number;maxRtcSeats:number}
 async function call<T>(path:string,init:RequestInit={}){const h=new Headers(init.headers);const token=getAuthToken();const user=getStoredSession()?.user;if(token)h.set('Authorization',`Bearer ${token}`);if(user){h.set('X-User-Id',user.id);h.set('X-User-Role',user.role)}const r=await fetch(`${BASE}${path}`,{...init,headers:h});const p=await r.json().catch(()=>null);if(!r.ok)throw new Error(p?.message||`课堂服务请求失败 (${r.status})`);return p as T}
 const roomPath=(roomId:string)=>`/classroom/rooms/${encodeURIComponent(roomId)}`
 export const classroomApi={
+  room:(id:string)=>call<ClassroomRoom>(roomPath(id)),
+  join:(id:string)=>call<ClassroomRoom>(`${roomPath(id)}/join`,{method:'POST'}),
+  heartbeat:(id:string)=>call<void>(`${roomPath(id)}/heartbeat`,{method:'POST'}),
+  leave:(id:string)=>call<void>(`${roomPath(id)}/leave`,{method:'POST'}),
   teacherHeartbeat:(id:string)=>call<void>(`${roomPath(id)}/teacher-heartbeat`,{method:'POST'}),
+  pause:(id:string)=>call<ClassroomRoom>(`${roomPath(id)}/pause`,{method:'POST'}),
+  resume:(id:string)=>call<ClassroomRoom>(`${roomPath(id)}/resume`,{method:'POST'}),
   rtcToken:(id:string)=>call<RtcCredentials>(`${roomPath(id)}/rtc/token`,{method:'POST'}),
   connected:(id:string)=>call<void>(`${roomPath(id)}/rtc/connected`,{method:'POST'}),
   rtcLeave:(id:string)=>call<void>(`${roomPath(id)}/rtc/leave`,{method:'POST'}),
   mute:(id:string,muted:boolean)=>call<void>(`${roomPath(id)}/rtc/${muted?'mute':'unmute'}`,{method:'POST'}),
   members:(id:string)=>call<ClassroomMember[]>(`${roomPath(id)}/members`),
   handRaises:(id:string)=>call<HandRaiseItem[]>(`${roomPath(id)}/hand-raises`),
+  raiseHand:(id:string)=>call<HandRaiseItem>(`${roomPath(id)}/hand-raise`,{method:'POST'}),
+  cancelHandRaise:(id:string)=>call<void>(`${roomPath(id)}/hand-raise`,{method:'DELETE'}),
   invite:(id:string,studentId:string)=>call(`${roomPath(id)}/students/${encodeURIComponent(studentId)}/rtc/invite`,{method:'POST'}),
   reject:(id:string,studentId:string)=>call(`${roomPath(id)}/students/${encodeURIComponent(studentId)}/hand-raise/reject`,{method:'POST'}),
   kick:(id:string,studentId:string)=>call(`${roomPath(id)}/students/${encodeURIComponent(studentId)}/rtc/kick`,{method:'POST'}),

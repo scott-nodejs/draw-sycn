@@ -5,7 +5,7 @@ export type ClassGroup = { id: string; teacherId: string; name: string; grade: s
 export type ClassMember = { studentId: string; studentName: string; mobile: string; joinedAt: string };
 export type ClassAssignment = { id: string; groupId: string; groupName: string; teacherName?: string; contentType: "paper" | "question"; contentId: string; title: string; recipientType?: "group" | "student"; studentId?: string; recipientCount?: number; status?: "published" | "scheduled"; scheduledAt?: string; createdAt: string };
 export type SyncRoomQuestion = { id: string; number: number; type: string; stem: string; optionsJson?: string };
-export type SyncRoom = { id: string; groupId: string; groupName: string; teacherId: string; teacherName: string; title: string; status: "NOT_STARTED" | "ACTIVE" | "ENDED"; createdAt: string; currentQuestion?: SyncRoomQuestion | null };
+export type SyncRoom = { id: string; groupId: string; groupName: string; teacherId: string; teacherName: string; title: string; status: "NOT_STARTED" | "ACTIVE" | "PAUSED" | "ENDED"; createdAt: string; currentQuestion?: SyncRoomQuestion | null };
 export type ClassInvite = { groupId: string; inviteCode: string; expiresAt: string };
 export type QuestionDifficulty = "高" | "中" | "低";
 

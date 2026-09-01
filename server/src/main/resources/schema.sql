@@ -489,6 +489,8 @@ CREATE TABLE IF NOT EXISTS class_sync_room (
   status VARCHAR(32) NOT NULL DEFAULT 'NOT_STARTED',
   max_rtc_seats INT NOT NULL DEFAULT 3,
   started_at DATETIME NULL,
+  paused_at DATETIME(3) NULL,
+  pause_count INT NOT NULL DEFAULT 0,
   ended_at DATETIME NULL,
   teacher_heartbeat_at DATETIME(3) NULL,
   created_at DATETIME NOT NULL,
