@@ -18,7 +18,7 @@ public class ApiErrorHandler {
     body.put("timestamp", LocalDateTime.now().toString());
     body.put("status", 413);
     body.put("error", "Payload Too Large");
-    body.put("message", "上传文件过大：单个文件不能超过 300MB");
+    body.put("message", "上传文件过大：单个文件不能超过 100MB");
     body.put("path", request.getRequestURI());
     return ResponseEntity.status(413).body(body);
   }

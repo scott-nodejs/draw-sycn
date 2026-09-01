@@ -213,7 +213,7 @@ public class TeachingPlatformService {
         int read;
         while ((read = input.read(buffer)) > 0) {
           totalSize += read;
-          if (totalSize > 300L * 1024L * 1024L) throw badRequest("ZIP 解压后总大小不能超过 300 MB");
+          if (totalSize > 100L * 1024L * 1024L) throw badRequest("ZIP 解压后总大小不能超过 100 MB");
           bytes.write(buffer, 0, read);
         }
         fileCount++;

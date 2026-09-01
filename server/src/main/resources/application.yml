@@ -8,8 +8,8 @@ spring:
     import: optional:file:.env.local[.properties]
   servlet:
     multipart:
-      max-file-size: 300MB
-      max-request-size: 310MB
+      max-file-size: 100MB
+      max-request-size: 110MB
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: ${MYSQL_URL}
