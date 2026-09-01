@@ -29,7 +29,7 @@ public class QuestionAssetCloudMigrationService {
   public Map<String, Object> migrateHistory() {
     if (!running.compareAndSet(false, true)) return status();
     List<String> paperIds = jdbc.queryForList(
-      "SELECT DISTINCT p.id FROM teaching_paper p JOIN teaching_question q ON q.paper_id=p.id WHERE p.deleted_at IS NULL AND q.deleted_at IS NULL AND q.crop_regions_json IS NOT NULL ORDER BY p.created_at",
+      "SELECT p.id FROM teaching_paper p WHERE p.deleted_at IS NULL AND EXISTS (SELECT 1 FROM teaching_question q WHERE q.paper_id=p.id AND q.deleted_at IS NULL AND q.crop_regions_json IS NOT NULL) ORDER BY p.created_at",
       String.class);
     total.set(paperIds.size()); completed.set(0); failed.set(0); migratedAssets.set(0);
     executor.submit(() -> {
