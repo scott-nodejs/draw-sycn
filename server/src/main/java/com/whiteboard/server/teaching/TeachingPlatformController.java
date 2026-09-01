@@ -118,19 +118,23 @@ public class TeachingPlatformController {
   }
 
   @GetMapping(value = "/questions/{questionId}/crops/{assetIndex}", produces = MediaType.IMAGE_PNG_VALUE)
-  public ResponseEntity<Resource> getQuestionCrop(
+  public ResponseEntity<?> getQuestionCrop(
       @PathVariable String questionId,
       @PathVariable int assetIndex,
       @RequestHeader("X-User-Id") String userId) {
+    String cloudUrl = service.getQuestionCropCloudUrl(questionId, assetIndex, userId);
+    if (cloudUrl != null) return ResponseEntity.status(HttpStatus.FOUND).location(java.net.URI.create(cloudUrl)).build();
     return ResponseEntity.ok().cacheControl(CacheControl.noCache()).contentType(MediaType.IMAGE_PNG)
       .body(service.getQuestionCrop(questionId, assetIndex, userId));
   }
 
   @GetMapping(value = "/questions/{questionId}/figures/{assetIndex}", produces = MediaType.IMAGE_PNG_VALUE)
-  public ResponseEntity<Resource> getQuestionFigure(
+  public ResponseEntity<?> getQuestionFigure(
       @PathVariable String questionId,
       @PathVariable int assetIndex,
       @RequestHeader("X-User-Id") String userId) {
+    String cloudUrl = service.getQuestionFigureCloudUrl(questionId, assetIndex, userId);
+    if (cloudUrl != null) return ResponseEntity.status(HttpStatus.FOUND).location(java.net.URI.create(cloudUrl)).build();
     return ResponseEntity.ok().cacheControl(CacheControl.noCache()).contentType(MediaType.IMAGE_PNG)
       .body(service.getQuestionFigure(questionId, assetIndex, userId));
   }

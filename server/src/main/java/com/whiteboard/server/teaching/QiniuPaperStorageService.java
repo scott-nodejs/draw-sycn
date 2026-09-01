@@ -1,5 +1,9 @@
 package com.whiteboard.server.teaching;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.qiniu.common.QiniuException;
 import com.qiniu.storage.BucketManager;
 import com.qiniu.storage.Configuration;
@@ -14,6 +18,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Map;
+import java.util.ArrayList;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -22,10 +27,11 @@ public class QiniuPaperStorageService {
   private final JdbcTemplate jdbc;
   private final WhiteboardProperties properties;
   private final PaperPagePreviewService previews;
+  private final ObjectMapper json;
   private volatile String resolvedDomain;
 
-  public QiniuPaperStorageService(JdbcTemplate jdbc, WhiteboardProperties properties, PaperPagePreviewService previews) {
-    this.jdbc = jdbc; this.properties = properties; this.previews = previews;
+  public QiniuPaperStorageService(JdbcTemplate jdbc, WhiteboardProperties properties, PaperPagePreviewService previews, ObjectMapper json) {
+    this.jdbc = jdbc; this.properties = properties; this.previews = previews; this.json = json;
   }
 
   public void archive(String paperId) throws Exception {
@@ -59,6 +65,7 @@ public class QiniuPaperStorageService {
       Path originalDocx = manifest.getParent().resolve("original.docx"), originalDoc = manifest.getParent().resolve("original.doc");
       if (Files.isRegularFile(originalDocx)) upload(originalDocx, "papers/" + paperId + "/source/original.docx");
       if (Files.isRegularFile(originalDoc)) upload(originalDoc, "papers/" + paperId + "/source/original.doc");
+      archiveQuestionAssets(paperId);
       jdbc.update("UPDATE teaching_paper SET cloud_status='done',cloud_error='',updated_at=NOW() WHERE id=?", paperId);
       if (sourceKey != null && !sourceKey.trim().isEmpty() && !"null".equals(sourceKey)) { Files.deleteIfExists(original); Files.deleteIfExists(originalDocx); Files.deleteIfExists(originalDoc); }
     } catch (Exception error) {
@@ -73,6 +80,66 @@ public class QiniuPaperStorageService {
     catch (Exception error) { return null; }
     return key == null || key.trim().isEmpty() ? null : signedUrl(key);
   }
+
+  public int archiveQuestionAssets(String paperId) throws Exception {
+    requireConfigured();
+    int migrated = 0;
+    List<Map<String, Object>> questions = jdbc.queryForList("SELECT id,crop_regions_json FROM teaching_question WHERE paper_id=? AND deleted_at IS NULL", paperId);
+    for (Map<String, Object> question : questions) {
+      String questionId = String.valueOf(question.get("id"));
+      JsonNode parsed = json.readTree(String.valueOf(question.get("crop_regions_json")));
+      ObjectNode data = parsed instanceof ObjectNode ? (ObjectNode) parsed : json.createObjectNode();
+      List<Path> uploadedLocals = new ArrayList<>();
+      int changed = migrateAssetArray(paperId, questionId, "assets", "crop", data.withArray("assets"), uploadedLocals)
+        + migrateAssetArray(paperId, questionId, "figureAssets", "figure", data.withArray("figureAssets"), uploadedLocals);
+      if (changed == 0) continue;
+      jdbc.update("UPDATE teaching_question SET crop_regions_json=?,version=version+1,updated_at=NOW() WHERE id=?", json.writeValueAsString(data), questionId);
+      for (Path local : uploadedLocals) Files.deleteIfExists(local);
+      migrated += changed;
+    }
+    return migrated;
+  }
+
+  private int migrateAssetArray(String paperId, String questionId, String field, String prefix, ArrayNode assets, List<Path> uploadedLocals) throws Exception {
+    int migrated = 0;
+    for (int index = 0; index < assets.size(); index++) {
+      JsonNode node = assets.get(index);
+      if (!(node instanceof ObjectNode)) continue;
+      ObjectNode descriptor = (ObjectNode) node;
+      String cloudKey = descriptor.path("cloudKey").asText("").trim();
+      if (!cloudKey.isEmpty()) continue;
+      Path local = java.nio.file.Paths.get(descriptor.path("objectKey").asText("")).toAbsolutePath().normalize();
+      if (!Files.isRegularFile(local)) continue;
+      cloudKey = String.format("papers/%s/questions/%s/%s-%02d.png", paperId, questionId, prefix, index + 1);
+      upload(local, cloudKey);
+      descriptor.put("cloudKey", cloudKey);
+      uploadedLocals.add(local);
+      migrated++;
+    }
+    return migrated;
+  }
+
+  public String questionAssetUrl(String questionId, int assetIndex, String field) {
+    try {
+      String cropJson = jdbc.queryForObject("SELECT crop_regions_json FROM teaching_question WHERE id=? AND deleted_at IS NULL", String.class, questionId);
+      JsonNode assets = json.readTree(cropJson).path(field);
+      if (!assets.isArray() || assetIndex < 0 || assetIndex >= assets.size()) return null;
+      String key = assets.get(assetIndex).path("cloudKey").asText("").trim();
+      return key.isEmpty() ? null : signedUrl(key);
+    } catch (Exception error) { return null; }
+  }
+
+  public void restoreAsset(String cloudKey, Path target) throws Exception {
+    if (cloudKey == null || cloudKey.trim().isEmpty()) throw new IllegalStateException("云端题图不存在");
+    Files.createDirectories(target.getParent());
+    Path temporary = Files.createTempFile(target.getParent(), "question-asset-", ".tmp");
+    try (InputStream input = new URL(signedUrl(cloudKey)).openStream()) {
+      Files.copy(input, temporary, StandardCopyOption.REPLACE_EXISTING);
+      Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
+    } finally { Files.deleteIfExists(temporary); }
+  }
+
+  public void uploadAsset(Path file, String cloudKey) throws Exception { requireConfigured(); upload(file, cloudKey); }
 
   public void restoreOriginal(String paperId, Path target) throws Exception {
     String key = jdbc.queryForObject("SELECT source_cloud_key FROM teaching_paper WHERE id=?", String.class, paperId);

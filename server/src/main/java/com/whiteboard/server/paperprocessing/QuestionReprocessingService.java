@@ -29,9 +29,10 @@ public class QuestionReprocessingService {
   private final ObjectMapper json;
   private final OcrProviderRouter ocrProviders;
   private final DeepseekClient deepseek;
+  private final com.whiteboard.server.teaching.PaperCloudMigrationService cloudMigration;
 
-  public QuestionReprocessingService(JdbcTemplate jdbc, ObjectMapper json, OcrProviderRouter ocrProviders, DeepseekClient deepseek) {
-    this.jdbc = jdbc; this.json = json; this.ocrProviders = ocrProviders; this.deepseek = deepseek;
+  public QuestionReprocessingService(JdbcTemplate jdbc, ObjectMapper json, OcrProviderRouter ocrProviders, DeepseekClient deepseek, com.whiteboard.server.teaching.PaperCloudMigrationService cloudMigration) {
+    this.jdbc = jdbc; this.json = json; this.ocrProviders = ocrProviders; this.deepseek = deepseek; this.cloudMigration = cloudMigration;
   }
 
   @Transactional
@@ -97,6 +98,7 @@ public class QuestionReprocessingService {
         Math.max(0, Math.min(100, recognized.path("confidence").asInt())), normalizeDifficulty(recognized.path("difficulty").asText()), json.writeValueAsString(cropData), version, now(), questionId);
       jdbc.update("INSERT INTO question_revision (id,question_id,version,snapshot_json,change_source,change_reason,created_at) VALUES (?,?,?,?,'AI_REGION_RECOGNITION','人工纠框后局部重识别',?)",
         id("revision"), questionId, version, json.writeValueAsString(recognized), now());
+      cloudMigration.queue(string(job.get("paperId")));
       jdbc.update("UPDATE question_reprocess_job SET status='done',stage='done',locked_at=NULL,finished_at=?,updated_at=? WHERE id=?", now(), now(), jobId);
       log.info("Question re-recognition completed: jobId={}, questionId={}, figureCount={}", jobId, questionId, artifacts.figures.size());
     }

@@ -465,6 +465,16 @@ public class TeachingPlatformService {
     return getQuestionImageAsset(questionId, assetIndex, userId, "figureAssets");
   }
 
+  public String getQuestionCropCloudUrl(String questionId, int assetIndex, String userId) {
+    Map<String, Object> question = getQuestion(questionId); assertQuestionImageViewer(questionId, stringValue(question.get("paperId")), userId);
+    return cloudStorage.questionAssetUrl(questionId, assetIndex, "assets");
+  }
+
+  public String getQuestionFigureCloudUrl(String questionId, int assetIndex, String userId) {
+    Map<String, Object> question = getQuestion(questionId); assertQuestionImageViewer(questionId, stringValue(question.get("paperId")), userId);
+    return cloudStorage.questionAssetUrl(questionId, assetIndex, "figureAssets");
+  }
+
   @Transactional
   public Map<String, Object> replaceQuestionFigure(String questionId, int assetIndex, MultipartFile file, String userId) throws IOException {
     if (file == null || file.isEmpty()) throw badRequest("请选择要替换的图片");
@@ -510,9 +520,15 @@ public class TeachingPlatformService {
       if (descriptor instanceof ObjectNode) {
         ((ObjectNode) descriptor).put("width", image.getWidth());
         ((ObjectNode) descriptor).put("height", image.getHeight());
+        String cloudKey = descriptor.path("cloudKey").asText("").trim();
+        if (cloudKey.isEmpty()) cloudKey = String.format("papers/%s/questions/%s/figure-%02d.png", current.get("paperId"), questionId, assetIndex + 1);
+        try { cloudStorage.uploadAsset(path, cloudKey); }
+        catch (Exception error) { throw new IOException("题目图片上传七牛失败", error); }
+        ((ObjectNode) descriptor).put("cloudKey", cloudKey);
       }
       jdbc.update("UPDATE teaching_question SET crop_regions_json=?,version=version+1,updated_at=? WHERE id=?",
         objectMapper.writeValueAsString(cropData), Timestamp.valueOf(LocalDateTime.now()), questionId);
+      Files.deleteIfExists(path);
       Map<String, Object> updated = getQuestion(questionId);
       jdbc.update("INSERT INTO question_revision (id,question_id,version,snapshot_json,change_source,changed_by,change_reason,created_at) VALUES (?,?,?,?, 'TEACHER_EDIT',?,?,?)",
         newId("revision"), questionId, longValue(updated.get("version")), json(updated), safe(userId), reason, Timestamp.valueOf(LocalDateTime.now()));
@@ -529,8 +545,13 @@ public class TeachingPlatformService {
       JsonNode assets = objectMapper.readTree(cropJson).path("figureAssets");
       if (!assets.isArray() || assetIndex < 0 || assetIndex >= assets.size()) throw notFound("题目图片不存在");
       Path root = Paths.get(properties.getStorageRoot()).toAbsolutePath().normalize();
-      Path path = Paths.get(assets.get(assetIndex).path("objectKey").asText()).toAbsolutePath().normalize();
-      if (!path.startsWith(root) || !Files.isRegularFile(path)) throw notFound("题目图片不存在");
+      JsonNode descriptor = assets.get(assetIndex);
+      Path path = Paths.get(descriptor.path("objectKey").asText()).toAbsolutePath().normalize();
+      if (!path.startsWith(root)) throw notFound("题目图片不存在");
+      if (!Files.isRegularFile(path)) {
+        try { cloudStorage.restoreAsset(descriptor.path("cloudKey").asText(""), path); }
+        catch (Exception error) { throw notFound("题目图片不存在"); }
+      }
       return path;
     } catch (JsonProcessingException error) { throw notFound("题目图片数据损坏"); }
   }

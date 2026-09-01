@@ -16,11 +16,13 @@ public class OrganizerWorkspaceController {
   private final OrganizerWorkspaceService organizer;
   private final TeachingPlatformService teaching;
   private final com.whiteboard.server.teaching.PaperCloudMigrationService cloudMigration;
+  private final com.whiteboard.server.teaching.QuestionAssetCloudMigrationService questionAssetMigration;
 
-  public OrganizerWorkspaceController(OrganizerWorkspaceService organizer, TeachingPlatformService teaching, com.whiteboard.server.teaching.PaperCloudMigrationService cloudMigration) {
+  public OrganizerWorkspaceController(OrganizerWorkspaceService organizer, TeachingPlatformService teaching, com.whiteboard.server.teaching.PaperCloudMigrationService cloudMigration, com.whiteboard.server.teaching.QuestionAssetCloudMigrationService questionAssetMigration) {
     this.organizer = organizer;
     this.teaching = teaching;
     this.cloudMigration = cloudMigration;
+    this.questionAssetMigration = questionAssetMigration;
   }
 
   @GetMapping("/dashboard")
@@ -54,6 +56,13 @@ public class OrganizerWorkspaceController {
 
   @GetMapping("/papers/cloud-migration")
   public Map<String, Object> paperMigrationStatus() { return cloudMigration.status(); }
+
+  @PostMapping("/question-assets/cloud-migration")
+  @ResponseStatus(HttpStatus.ACCEPTED)
+  public Map<String, Object> migrateQuestionAssetHistory() { return questionAssetMigration.migrateHistory(); }
+
+  @GetMapping("/question-assets/cloud-migration")
+  public Map<String, Object> questionAssetMigrationStatus() { return questionAssetMigration.status(); }
 
   @DeleteMapping("/papers/{paperId}")
   @ResponseStatus(HttpStatus.NO_CONTENT)
