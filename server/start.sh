@@ -9,7 +9,7 @@ APP_JAR="${APP_JAR:-$SCRIPT_DIR/target/whiteboard-server-0.1.0.jar}"
 PID_FILE="${PID_FILE:-$SCRIPT_DIR/.whiteboard-server.pid}"
 LOG_DIR="${LOG_DIR:-$SCRIPT_DIR/logs}"
 LOG_FILE="${LOG_FILE:-$LOG_DIR/whiteboard-server.log}"
-JAVA_OPTS="${JAVA_OPTS:--Xms512m -Xmx1536m -Dfile.encoding=UTF-8 -Duser.timezone=Asia/Shanghai}"
+JAVA_OPTS="${JAVA_OPTS:--Xms256m -Xmx1024m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=$LOG_DIR -Dfile.encoding=UTF-8 -Duser.timezone=Asia/Shanghai}"
 
 if [[ ! -f "$APP_JAR" ]]; then
   echo "JAR not found: $APP_JAR"

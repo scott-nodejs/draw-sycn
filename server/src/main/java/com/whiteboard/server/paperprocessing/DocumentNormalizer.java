@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.UUID;
 import javax.imageio.ImageIO;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.io.MemoryUsageSetting;
 import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -32,21 +33,29 @@ public class DocumentNormalizer {
       String lowerName = source.getFileName().toString().toLowerCase();
       log.info("Normalizing paper source: paperId={}, source={}", paperId, source.getFileName());
       if (lowerName.endsWith(".pdf")) {
-        try (PDDocument document = PDDocument.load(source.toFile())) {
+        try (PDDocument document = PDDocument.load(source.toFile(), MemoryUsageSetting.setupTempFileOnly())) {
           log.info("PDF opened for normalization: paperId={}, source={}, pages={}", paperId, source.getFileName(), document.getNumberOfPages());
           PDFRenderer renderer = new PDFRenderer(document);
           for (int index = 0; index < document.getNumberOfPages(); index++) {
             log.info("Rendering PDF page: paperId={}, source={}, page={}/{}", paperId, source.getFileName(), index + 1, document.getNumberOfPages());
             BufferedImage image = renderer.renderImageWithDPI(index, 180, ImageType.RGB);
-            pageNumber++;
-            savePage(paperId, pageNumber, source, image, pagesDirectory);
+            try {
+              pageNumber++;
+              savePage(paperId, pageNumber, source, image, pagesDirectory);
+            } finally {
+              image.flush();
+            }
           }
         }
       } else {
         BufferedImage image = ImageIO.read(source.toFile());
         if (image == null) throw new ProviderException("UNSUPPORTED_IMAGE", "无法读取图片：" + source.getFileName());
-        pageNumber++;
-        savePage(paperId, pageNumber, source, image, pagesDirectory);
+        try {
+          pageNumber++;
+          savePage(paperId, pageNumber, source, image, pagesDirectory);
+        } finally {
+          image.flush();
+        }
       }
     }
     if (pageNumber == 0) throw new ProviderException("EMPTY_DOCUMENT", "文档中没有可处理的页面");

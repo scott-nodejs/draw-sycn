@@ -19,9 +19,11 @@ public class PageImagePreprocessor {
   public Summary process(String paperId,Path paperDirectory)throws Exception{
     List<Page> pages=jdbc.query("SELECT page_number,normalized_object_key FROM paper_page WHERE paper_id=? ORDER BY page_number",(rs,n)->new Page(rs.getInt(1),Paths.get(rs.getString(2))),paperId);
     int repaired=0,totalScore=0;Path output=paperDirectory.resolve("preprocessed");Files.createDirectories(output);
-    for(Page page:pages){BufferedImage source=ImageIO.read(page.path.toFile());if(source==null)continue;Metrics metrics=measure(source);int score=score(source,metrics);Path selected=page.path;String status="quality_checked";
-      if(score<65){BufferedImage enhanced=enhance(source);selected=output.resolve(String.format("page-%04d.png",page.number));ImageIO.write(enhanced,"png",selected.toFile());status="preprocessed";repaired++;}
-      jdbc.update("UPDATE paper_page SET normalized_object_key=?,quality_score=?,status=?,updated_at=NOW() WHERE paper_id=? AND page_number=?",selected.toString(),score,status,paperId,page.number);totalScore+=score;
+    for(Page page:pages){BufferedImage source=ImageIO.read(page.path.toFile());if(source==null)continue;BufferedImage enhanced=null;
+      try{Metrics metrics=measure(source);int score=score(source,metrics);Path selected=page.path;String status="quality_checked";
+        if(score<65){enhanced=enhance(source);selected=output.resolve(String.format("page-%04d.png",page.number));ImageIO.write(enhanced,"png",selected.toFile());status="preprocessed";repaired++;}
+        jdbc.update("UPDATE paper_page SET normalized_object_key=?,quality_score=?,status=?,updated_at=NOW() WHERE paper_id=? AND page_number=?",selected.toString(),score,status,paperId,page.number);totalScore+=score;
+      }finally{if(enhanced!=null)enhanced.flush();source.flush();}
     }
     return new Summary(pages.size(),repaired,pages.isEmpty()?0:totalScore/pages.size());
   }

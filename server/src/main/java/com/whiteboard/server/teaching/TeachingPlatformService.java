@@ -118,15 +118,20 @@ public class TeachingPlatformService {
       String organizationId, String creatorId) throws IOException {
     if (zipFile == null || zipFile.isEmpty()) throw badRequest("请选择 ZIP 文件");
     if (!isZip(zipFile)) throw badRequest("仅支持 ZIP 压缩包");
-    Map<String, List<ZipDocumentFile>> groups = unzipDocumentGroups(zipFile);
-    if (groups.isEmpty()) throw badRequest("ZIP 中没有可识别的 PDF 或图片文件");
-    List<Map<String, Object>> papers = new ArrayList<>();
-    boolean single = groups.size() == 1;
-    for (Map.Entry<String, List<ZipDocumentFile>> entry : groups.entrySet()) {
-      String batchTitle = single ? title : required(title, "导入批次名称") + " - " + readableZipGroupName(entry.getKey());
-      papers.add(createDocumentBatchSources(entry.getValue(), batchTitle, subject, grade, organizationId, creatorId, "教师上传"));
+    Path tempRoot = Files.createTempDirectory("paper-zip-");
+    try {
+      Map<String, List<ZipDocumentFile>> groups = unzipDocumentGroups(zipFile, tempRoot);
+      if (groups.isEmpty()) throw badRequest("ZIP 中没有可识别的 PDF 或图片文件");
+      List<Map<String, Object>> papers = new ArrayList<>();
+      boolean single = groups.size() == 1;
+      for (Map.Entry<String, List<ZipDocumentFile>> entry : groups.entrySet()) {
+        String batchTitle = single ? title : required(title, "导入批次名称") + " - " + readableZipGroupName(entry.getKey());
+        papers.add(createDocumentBatchSources(entry.getValue(), batchTitle, subject, grade, organizationId, creatorId, "教师上传"));
+      }
+      return papers;
+    } finally {
+      deleteTemporaryDirectory(tempRoot);
     }
-    return papers;
   }
 
   private Map<String, Object> createDocumentBatch(List<MultipartFile> files, String title, String subject, String grade,
@@ -184,19 +189,20 @@ public class TeachingPlatformService {
     return getPaper(id);
   }
 
-  private Map<String, List<ZipDocumentFile>> unzipDocumentGroups(MultipartFile zipFile) throws IOException {
+  private Map<String, List<ZipDocumentFile>> unzipDocumentGroups(MultipartFile zipFile, Path tempRoot) throws IOException {
     try {
-      return unzipDocumentGroups(zipFile, StandardCharsets.UTF_8);
+      return unzipDocumentGroups(zipFile, StandardCharsets.UTF_8, tempRoot);
     } catch (IllegalArgumentException utf8Error) {
+      clearTemporaryDirectory(tempRoot);
       try {
-        return unzipDocumentGroups(zipFile, Charset.forName("GBK"));
+        return unzipDocumentGroups(zipFile, Charset.forName("GBK"), tempRoot);
       } catch (IllegalArgumentException gbkError) {
         throw badRequest("ZIP 文件名编码不受支持，请使用 UTF-8 编码重新压缩");
       }
     }
   }
 
-  private Map<String, List<ZipDocumentFile>> unzipDocumentGroups(MultipartFile zipFile, Charset charset) throws IOException {
+  private Map<String, List<ZipDocumentFile>> unzipDocumentGroups(MultipartFile zipFile, Charset charset, Path tempRoot) throws IOException {
     Map<String, List<ZipDocumentFile>> groups = new LinkedHashMap<>();
     byte[] buffer = new byte[8192];
     long totalSize = 0;
@@ -209,24 +215,42 @@ public class TeachingPlatformService {
         if (entryName.isEmpty()) continue;
         String lower = entryName.toLowerCase();
         if (!isSupportedZipDocument(lower)) continue;
-        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
-        int read;
-        while ((read = input.read(buffer)) > 0) {
-          totalSize += read;
-          if (totalSize > 100L * 1024L * 1024L) throw badRequest("ZIP 解压后总大小不能超过 100 MB");
-          bytes.write(buffer, 0, read);
-        }
         fileCount++;
         if (fileCount > 200) throw badRequest("ZIP 内文件数量不能超过 200 个");
+        String suffix = lower.substring(lower.lastIndexOf('.'));
+        Path extracted = tempRoot.resolve(String.format("entry-%04d%s", fileCount, suffix)).normalize();
+        if (!extracted.startsWith(tempRoot)) throw badRequest("ZIP 包含非法文件路径");
+        long entrySize = 0;
+        try (java.io.OutputStream output = Files.newOutputStream(extracted)) {
+          int read;
+          while ((read = input.read(buffer)) > 0) {
+            totalSize += read; entrySize += read;
+            if (totalSize > 100L * 1024L * 1024L) throw badRequest("ZIP 解压后总大小不能超过 100 MB");
+            output.write(buffer, 0, read);
+          }
+        }
         String group = zipGroupName(entryName, lower.endsWith(".pdf") || lower.endsWith(".doc") || lower.endsWith(".docx"));
         groups.computeIfAbsent(group, key -> new ArrayList<>())
-          .add(new ZipDocumentFile(entryName, contentTypeForName(lower), bytes.toByteArray()));
+          .add(new ZipDocumentFile(entryName, contentTypeForName(lower), extracted, entrySize));
       }
     }
     for (List<ZipDocumentFile> groupFiles : groups.values()) {
       groupFiles.sort(Comparator.comparing(ZipDocumentFile::getOriginalFilename));
     }
     return groups;
+  }
+
+  private void clearTemporaryDirectory(Path directory) throws IOException {
+    if (!Files.exists(directory)) return;
+    try (java.util.stream.Stream<Path> paths = Files.walk(directory)) {
+      for (Path path : (Iterable<Path>) paths.sorted(Comparator.reverseOrder())::iterator)
+        if (!path.equals(directory)) Files.deleteIfExists(path);
+    }
+  }
+
+  private void deleteTemporaryDirectory(Path directory) throws IOException {
+    clearTemporaryDirectory(directory);
+    Files.deleteIfExists(directory);
   }
 
   private String normalizeZipEntryName(String name) {
@@ -917,14 +941,15 @@ public class TeachingPlatformService {
   private static class ZipDocumentFile implements DocumentSourceFile {
     private final String originalFilename;
     private final String contentType;
-    private final byte[] content;
-    ZipDocumentFile(String originalFilename, String contentType, byte[] content) {
-      this.originalFilename = originalFilename; this.contentType = contentType; this.content = content;
+    private final Path path;
+    private final long size;
+    ZipDocumentFile(String originalFilename, String contentType, Path path, long size) {
+      this.originalFilename = originalFilename; this.contentType = contentType; this.path = path; this.size = size;
     }
-    public boolean isEmpty() { return content.length == 0; }
+    public boolean isEmpty() { return size == 0; }
     public String getOriginalFilename() { return originalFilename; }
     public String getContentType() { return contentType; }
-    public long getSize() { return content.length; }
-    public InputStream getInputStream() { return new java.io.ByteArrayInputStream(content); }
+    public long getSize() { return size; }
+    public InputStream getInputStream() throws IOException { return Files.newInputStream(path); }
   }
 }
