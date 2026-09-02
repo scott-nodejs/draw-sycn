@@ -40,7 +40,10 @@ public class QuestionReprocessingService {
     try {
       Path directory = questionDirectory(paperId, questionId).resolve("manual-reprocess");
       Files.createDirectories(directory);
-      List<String> inputs = createCrops(paperId, regions, directory);
+      ArrayNode assets = createCropAssets(paperId, regions, directory);
+      List<String> inputs = new ArrayList<>();
+      for (JsonNode asset : assets) inputs.add(asset.path("objectKey").asText());
+      replaceCropAssets(questionId, regions, assets);
       Path manifest = directory.resolve("input-manifest.json");
       json.writeValue(manifest.toFile(), inputs);
       Timestamp now = now();
@@ -53,6 +56,27 @@ public class QuestionReprocessingService {
     } catch (Exception error) {
       throw new ProviderException("QUESTION_CROP_REBUILD_FAILED", error.getMessage() == null ? "Failed to rebuild question crop" : error.getMessage());
     }
+  }
+
+  public ArrayNode rebuildCropAssets(String questionId, String paperId, JsonNode regions) {
+    try {
+      Path directory = questionDirectory(paperId, questionId).resolve("manual-reprocess");
+      Files.createDirectories(directory);
+      return createCropAssets(paperId, regions, directory);
+    } catch (Exception error) {
+      throw new ProviderException("QUESTION_CROP_REBUILD_FAILED", error.getMessage() == null ? "Failed to rebuild question crop" : error.getMessage());
+    }
+  }
+
+  public void queueCloudArchive(String paperId) { cloudMigration.queue(paperId); }
+
+  private void replaceCropAssets(String questionId, JsonNode regions, ArrayNode assets) throws Exception {
+    String cropJson = jdbc.queryForObject("SELECT crop_regions_json FROM teaching_question WHERE id=?", String.class, questionId);
+    JsonNode parsed = json.readTree(cropJson);
+    ObjectNode cropData = parsed instanceof ObjectNode ? (ObjectNode) parsed : json.createObjectNode();
+    cropData.set("regions", regions.deepCopy());
+    cropData.set("assets", assets);
+    jdbc.update("UPDATE teaching_question SET crop_regions_json=?,updated_at=? WHERE id=?", json.writeValueAsString(cropData), now(), questionId);
   }
 
   @Scheduled(fixedDelayString = "${QUESTION_REPROCESS_INTERVAL_MS:5000}")
@@ -104,8 +128,8 @@ public class QuestionReprocessingService {
     }
   }
 
-  private List<String> createCrops(String paperId, JsonNode regions, Path output) throws Exception {
-    List<String> paths = new ArrayList<>(); int index = 0;
+  private ArrayNode createCropAssets(String paperId, JsonNode regions, Path output) throws Exception {
+    ArrayNode assets = json.createArrayNode(); int index = 0;
     for (JsonNode region : regions) {
       int page = region.path("pageNumber").asInt();
       String stored = jdbc.queryForObject("SELECT normalized_object_key FROM paper_page WHERE paper_id=? AND page_number=?", String.class, paperId, page);
@@ -114,9 +138,14 @@ public class QuestionReprocessingService {
       int x1 = pixel(region.path("x1").asInt(), image.getWidth()); int y1 = pixel(region.path("y1").asInt(), image.getHeight());
       if (x1 <= x0 || y1 <= y0) throw new ProviderException("INVALID_CROP_REGION", "Invalid question region");
       Path crop = output.resolve(String.format("crop-%02d.png", ++index));
-      ImageIO.write(image.getSubimage(x0, y0, x1 - x0, y1 - y0), "png", crop.toFile()); paths.add(crop.toString());
+      BufferedImage cropped = image.getSubimage(x0, y0, x1 - x0, y1 - y0);
+      ImageIO.write(cropped, "png", crop.toFile());
+      ObjectNode descriptor = assets.addObject();
+      descriptor.put("objectKey", crop.toAbsolutePath().normalize().toString());
+      descriptor.put("width", cropped.getWidth());
+      descriptor.put("height", cropped.getHeight());
     }
-    return paths;
+    return assets;
   }
 
   private Path questionDirectory(String paperId, String questionId) {

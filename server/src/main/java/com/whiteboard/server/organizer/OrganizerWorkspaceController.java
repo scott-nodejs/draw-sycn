@@ -64,6 +64,13 @@ public class OrganizerWorkspaceController {
   @GetMapping("/question-assets/cloud-migration")
   public Map<String, Object> questionAssetMigrationStatus() { return questionAssetMigration.status(); }
 
+  @PostMapping("/question-assets/crop-rebuild")
+  @ResponseStatus(HttpStatus.ACCEPTED)
+  public Map<String, Object> rebuildHistoricalQuestionCrops() { return questionAssetMigration.rebuildHistory(); }
+
+  @GetMapping("/question-assets/crop-rebuild")
+  public Map<String, Object> historicalQuestionCropRebuildStatus() { return questionAssetMigration.status(); }
+
   @DeleteMapping("/papers/{paperId}")
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void deletePaper(@PathVariable String paperId, @RequestHeader("X-User-Id") String userId) {

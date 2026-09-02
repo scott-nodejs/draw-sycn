@@ -375,7 +375,10 @@ public class TeachingPlatformService {
       try {
         JsonNode parsed = objectMapper.readTree(cropRegionsJson);
         ObjectNode cropData = parsed instanceof ObjectNode ? (ObjectNode) parsed : objectMapper.createObjectNode();
-        if (patch.has("sourceRegions")) cropData.set("regions", regions.deepCopy());
+        if (patch.has("sourceRegions")) {
+          cropData.set("regions", regions.deepCopy());
+          cropData.set("assets", questionReprocessing.rebuildCropAssets(id, stringValue(current.get("paperId")), regions));
+        }
         if (patch.has("presentationLayout")) cropData.set("presentationLayout", patch.path("presentationLayout").deepCopy());
         cropRegionsJson = objectMapper.writeValueAsString(cropData);
       } catch (JsonProcessingException error) {
@@ -390,6 +393,7 @@ public class TeachingPlatformService {
     if (patch.has("sourceRegions") || patch.has("presentationLayout")) {
       jdbc.update("UPDATE teaching_question SET crop_regions_json=? WHERE id=?", cropRegionsJson, id);
     }
+    if (patch.has("sourceRegions")) questionReprocessing.queueCloudArchive(stringValue(current.get("paperId")));
     refreshPaperCounts(stringValue(current.get("paperId")));
     Map<String, Object> updated = getQuestion(id);
     jdbc.update("INSERT INTO question_revision (id,question_id,version,snapshot_json,change_source,changed_by,change_reason,created_at) VALUES (?,?,?,?, 'TEACHER_EDIT',?,?,?)",
@@ -847,7 +851,7 @@ public class TeachingPlatformService {
     row.put("boundaryQuality", cropData.path("boundaryQuality"));
     row.put("warnings", cropData.path("warnings"));
     if (cropData.has("presentationLayout")) row.put("presentationLayout", cropData.path("presentationLayout"));
-    List<String> cropUrls = new ArrayList<>(); for (int i = 0; i < cropData.path("assets").size(); i++) cropUrls.add("/api/questions/" + rs.getString("id") + "/crops/" + i);
+    List<String> cropUrls = new ArrayList<>(); for (int i = 0; i < cropData.path("assets").size(); i++) cropUrls.add("/api/questions/" + rs.getString("id") + "/crops/" + i + "?v=" + rs.getLong("version"));
     row.put("cropUrls", cropUrls);
     List<String> figureUrls = new ArrayList<>(); for (int i = 0; i < cropData.path("figureAssets").size(); i++) figureUrls.add("/api/questions/" + rs.getString("id") + "/figures/" + i + "?v=" + rs.getLong("version"));
     row.put("figureUrls", figureUrls); return row;
