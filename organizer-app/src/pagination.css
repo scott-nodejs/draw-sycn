@@ -100,12 +100,6 @@
   overflow-x: auto;
 }
 
-.subject-filter-strip > span {
-  margin-right: 3px;
-  color: #8490a3;
-  font-size: 12px;
-}
-
 .subject-filter-strip button {
   height: 34px;
   flex: 0 0 auto;
@@ -124,8 +118,12 @@
 }
 
 .task-center .subject-filter-strip { margin: -8px 0 18px; }
-.page-subject-filter { margin: 14px 38px 0; }
-.page-subject-filter + .question-library { height: calc(100vh - 144px); }
+.paper-subject-filter { margin: -8px 0 18px; }
+.knowledge-subject-filter {
+  margin: -8px 0 14px;
+  padding: 0 0 14px;
+  border-bottom: 1px solid var(--line);
+}
 
 .knowledge-toggle {
   width: 20px;
