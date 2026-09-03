@@ -21,11 +21,11 @@ const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 const uploadSize = computed(() => files.value.reduce((total, file) => total + file.size, 0));
 const setOpen = ref(false), setForm = ref({ title: '', description: '', subject: '数学', grade: '初三', collectionType: 'topic', topicLabel: '', price: 19.9, questionIds: [] });
 const setTab = ref('mine'), editingSetId = ref(null);
-const knowledgePoints = ref([]), selectedKnowledgePoint = ref(''), questionSearch = ref(''), questionType = ref(''), questionDifficulty = ref(''), questionSubject = ref(''), editingKnowledgeQuestion = ref(null), newKnowledgeName = ref('');
+const knowledgePoints = ref([]), selectedKnowledgePoint = ref(''), questionSearch = ref(''), questionType = ref(''), questionDifficulty = ref(''), questionSubject = ref('数学'), editingKnowledgeQuestion = ref(null), newKnowledgeName = ref('');
 const expandedKnowledge = ref(new Set());
 const libraryEditingQuestion = ref(null);
 const questionViewMode = ref('list'), compareQuestionIndex = ref(0);
-const pageSize = 10, paperPageSize = 9, paperPage = ref(1), taskPage = ref(1), questionPage = ref(1), paperSearch = ref(''), paperSubject = ref(''), taskSubject = ref(''), paperFilter = ref('all'), taskFilter = ref('all');
+const pageSize = 10, paperPageSize = 12, paperPage = ref(1), taskPage = ref(1), questionPage = ref(1), paperSearch = ref(''), paperSubject = ref(''), taskSubject = ref(''), paperFilter = ref('all'), taskFilter = ref('all');
 const paperViewMode = ref('list'), workspacePaperId = ref('');
 const orderedSubjects = (values) => { const unique = [...new Set(values.map(value => value?.trim()).filter((value) => Boolean(value)))]; return ['数学', '物理', ...unique.filter(value => !['数学', '物理'].includes(value)).sort((a, b) => a.localeCompare(b, 'zh-CN'))]; };
 const paperSubjects = computed(() => orderedSubjects(papers.value.map(p => p.subject)));
@@ -2287,29 +2287,6 @@ else {
         });
         /** @type {__VLS_StyleScopedClasses['subject-filter-strip']} */ ;
         /** @type {__VLS_StyleScopedClasses['knowledge-subject-filter']} */ ;
-        __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
-            ...{ onClick: (...[$event]) => {
-                    if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
-                        throw 0;
-                    if (!!(!__VLS_ctx.current))
-                        throw 0;
-                    if (!!(__VLS_ctx.page === 'dashboard'))
-                        throw 0;
-                    if (!!(__VLS_ctx.page === 'tasks'))
-                        throw 0;
-                    if (!!(__VLS_ctx.page === 'papers'))
-                        throw 0;
-                    if (!!(__VLS_ctx.page === 'review'))
-                        throw 0;
-                    if (!(__VLS_ctx.page === 'questions'))
-                        throw 0;
-                    return (__VLS_ctx.questionSubject = '');
-                    // @ts-ignore
-                    [page, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, saveQuestion, libraryEditingQuestion, questionSubject,];
-                } },
-            ...{ class: ({ active: !__VLS_ctx.questionSubject }) },
-        });
-        /** @type {__VLS_StyleScopedClasses['active']} */ ;
         for (const [subject] of __VLS_vFor((__VLS_ctx.questionSubjects))) {
             __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
                 ...{ onClick: (...[$event]) => {
@@ -2329,7 +2306,7 @@ else {
                             throw 0;
                         return (__VLS_ctx.questionSubject = subject);
                         // @ts-ignore
-                        [questionSubject, questionSubject, questionSubjects,];
+                        [page, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, saveQuestion, libraryEditingQuestion, questionSubjects, questionSubject,];
                     } },
                 key: (subject),
                 ...{ class: ({ active: __VLS_ctx.questionSubject === subject }) },

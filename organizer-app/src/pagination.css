@@ -209,3 +209,22 @@
 
 .set-delete-button:hover:not(:disabled) { background: #fff0f1; }
 .set-delete-button svg { width: 16px; }
+
+.content:has(.paper-view-switch) {
+  width: 100%;
+  max-width: none;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.content:has(.paper-view-switch) .paper-grid {
+  grid-template-columns: repeat(4, minmax(230px, 1fr));
+}
+
+@media (max-width: 1500px) {
+  .content:has(.paper-view-switch) .paper-grid { grid-template-columns: repeat(3, minmax(230px, 1fr)); }
+}
+
+@media (max-width: 1250px) {
+  .content:has(.paper-view-switch) .paper-grid { grid-template-columns: repeat(2, minmax(230px, 1fr)); }
+}
