@@ -25,7 +25,7 @@ const knowledgePoints = ref([]), selectedKnowledgePoint = ref(''), questionSearc
 const expandedKnowledge = ref(new Set());
 const libraryEditingQuestion = ref(null);
 const questionViewMode = ref('list'), compareQuestionIndex = ref(0);
-const pageSize = 10, paperPageSize = 12, paperPage = ref(1), taskPage = ref(1), questionPage = ref(1), paperSearch = ref(''), paperSubject = ref(''), taskSubject = ref(''), paperFilter = ref('all'), taskFilter = ref('all');
+const pageSize = 10, paperPageSize = 12, paperPage = ref(1), taskPage = ref(1), questionPage = ref(1), paperSearch = ref(''), paperSubject = ref('数学'), taskSubject = ref('数学'), paperFilter = ref('all'), taskFilter = ref('all');
 const paperViewMode = ref('list'), workspacePaperId = ref('');
 const orderedSubjects = (values) => { const unique = [...new Set(values.map(value => value?.trim()).filter((value) => Boolean(value)))]; return ['数学', '物理', ...unique.filter(value => !['数学', '物理'].includes(value)).sort((a, b) => a.localeCompare(b, 'zh-CN'))]; };
 const paperSubjects = computed(() => orderedSubjects(papers.value.map(p => p.subject)));
@@ -1044,23 +1044,6 @@ else {
             ...{ class: "subject-filter-strip" },
         });
         /** @type {__VLS_StyleScopedClasses['subject-filter-strip']} */ ;
-        __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
-            ...{ onClick: (...[$event]) => {
-                    if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
-                        throw 0;
-                    if (!!(!__VLS_ctx.current))
-                        throw 0;
-                    if (!!(__VLS_ctx.page === 'dashboard'))
-                        throw 0;
-                    if (!(__VLS_ctx.page === 'tasks'))
-                        throw 0;
-                    return (__VLS_ctx.taskSubject = '');
-                    // @ts-ignore
-                    [taskCounts, taskFilter, taskSubject,];
-                } },
-            ...{ class: ({ active: !__VLS_ctx.taskSubject }) },
-        });
-        /** @type {__VLS_StyleScopedClasses['active']} */ ;
         for (const [subject] of __VLS_vFor((__VLS_ctx.paperSubjects))) {
             __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
                 ...{ onClick: (...[$event]) => {
@@ -1074,7 +1057,7 @@ else {
                             throw 0;
                         return (__VLS_ctx.taskSubject = subject);
                         // @ts-ignore
-                        [taskSubject, taskSubject, paperSubjects,];
+                        [taskCounts, taskFilter, paperSubjects, taskSubject,];
                     } },
                 key: (subject),
                 ...{ class: ({ active: __VLS_ctx.taskSubject === subject }) },
@@ -1551,25 +1534,6 @@ else {
         });
         /** @type {__VLS_StyleScopedClasses['subject-filter-strip']} */ ;
         /** @type {__VLS_StyleScopedClasses['paper-subject-filter']} */ ;
-        __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
-            ...{ onClick: (...[$event]) => {
-                    if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
-                        throw 0;
-                    if (!!(!__VLS_ctx.current))
-                        throw 0;
-                    if (!!(__VLS_ctx.page === 'dashboard'))
-                        throw 0;
-                    if (!!(__VLS_ctx.page === 'tasks'))
-                        throw 0;
-                    if (!(__VLS_ctx.page === 'papers'))
-                        throw 0;
-                    return (__VLS_ctx.paperSubject = '');
-                    // @ts-ignore
-                    [paperViewMode, paperSubject,];
-                } },
-            ...{ class: ({ active: !__VLS_ctx.paperSubject }) },
-        });
-        /** @type {__VLS_StyleScopedClasses['active']} */ ;
         for (const [subject] of __VLS_vFor((__VLS_ctx.paperSubjects))) {
             __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
                 ...{ onClick: (...[$event]) => {
@@ -1585,7 +1549,7 @@ else {
                             throw 0;
                         return (__VLS_ctx.paperSubject = subject);
                         // @ts-ignore
-                        [paperSubjects, paperSubject, paperSubject,];
+                        [paperSubjects, paperViewMode, paperSubject,];
                     } },
                 key: (subject),
                 ...{ class: ({ active: __VLS_ctx.paperSubject === subject }) },
