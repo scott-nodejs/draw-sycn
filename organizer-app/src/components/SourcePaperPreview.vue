@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { nextTick,onBeforeUnmount,ref,watch } from 'vue'
+import { computed,nextTick,onBeforeUnmount,ref,watch } from 'vue'
 import { LoaderCircle,Move,ScanLine } from 'lucide-vue-next'
 import { api,type Paper,type Question } from '../api'
 
 type Region=NonNullable<Question['sourceRegions']>[number]
 type DragMode='move'|'n'|'s'|'e'|'w'|'ne'|'nw'|'se'|'sw'
 const handles:DragMode[]=['n','s','e','w','ne','nw','se','sw']
-const props=defineProps<{paper:Paper;question:Question;recognizing?:boolean}>()
+const props=defineProps<{paper:Paper;question?:Question;recognizing?:boolean;editable?:boolean}>()
 const emit=defineEmits<{(event:'update:regions',regions:NonNullable<Question['sourceRegions']>):void;(event:'recognize'):void}>()
+const canEdit=computed(()=>props.editable!==false&&Boolean(props.question))
 const viewport=ref<HTMLElement|null>(null),pageUrls=ref<(string|null)[]>([]),loadingPages=ref(new Set<number>()),renderedPages=ref(new Set<number>()),pageErrors=ref(new Set<number>()),loadError=ref('')
 let drag:null|{index:number;x:number;y:number;mode:DragMode;region:Region;box:DOMRect;grabX:number;grabY:number}=null
 let loadGeneration=0
@@ -33,20 +34,20 @@ async function loadPage(page:number,generation:number){
 function pageRendered(page:number){const rendered=new Set(renderedPages.value);rendered.add(page);renderedPages.value=rendered;if(regionsForPage(page).length)nextTick().then(()=>window.setTimeout(scrollToQuestion,40))}
 async function loadPaper(){
  release();loadError.value='';const generation=loadGeneration;const count=Math.max(1,props.paper.pageCount);pageUrls.value=Array(count).fill(null)
- const questionPages=[...new Set((props.question.sourceRegions||[]).map(region=>region.pageNumber))].filter(page=>page>=1&&page<=count)
+ const questionPages=[...new Set((props.question?.sourceRegions||[]).map(region=>region.pageNumber))].filter(page=>page>=1&&page<=count)
  const remaining=Array.from({length:count},(_,index)=>index+1).filter(page=>!questionPages.includes(page))
  await Promise.all(questionPages.map(page=>loadPage(page,generation)))
  if(generation!==loadGeneration)return
  for(let index=0;index<remaining.length;index+=2)await Promise.all(remaining.slice(index,index+2).map(page=>loadPage(page,generation)))
 }
-function regionsForPage(page:number){return(props.question.sourceRegions||[]).map((region,index)=>({region,index})).filter(item=>item.region.pageNumber===page)}
+function regionsForPage(page:number){return(props.question?.sourceRegions||[]).map((region,index)=>({region,index})).filter(item=>item.region.pageNumber===page)}
 function scrollToQuestion(){const container=viewport.value,target=container?.querySelector<HTMLElement>('.paper-question-region');if(!container||!target)return;container.scrollTo({top:Math.max(0,target.offsetTop+target.parentElement!.offsetTop-container.clientHeight*.25),behavior:'smooth'})}
-function startAdjust(event:PointerEvent,index:number,mode:DragMode){const page=(event.currentTarget as HTMLElement).closest<HTMLElement>('.paper-source-page'),region=props.question.sourceRegions?.[index];if(!page||!region)return;event.preventDefault();event.stopPropagation();const box=page.getBoundingClientRect();drag={index,mode,x:event.clientX,y:event.clientY,region:{...region},box,grabX:(event.clientX-box.left)/box.width*1000-region.x0,grabY:(event.clientY-box.top)/box.height*1000-region.y0};window.addEventListener('pointermove',adjust);window.addEventListener('pointerup',stopAdjust,{once:true})}
+function startAdjust(event:PointerEvent,index:number,mode:DragMode){const page=(event.currentTarget as HTMLElement).closest<HTMLElement>('.paper-source-page'),region=props.question?.sourceRegions?.[index];if(!canEdit.value||!page||!region)return;event.preventDefault();event.stopPropagation();const box=page.getBoundingClientRect();drag={index,mode,x:event.clientX,y:event.clientY,region:{...region},box,grabX:(event.clientX-box.left)/box.width*1000-region.x0,grabY:(event.clientY-box.top)/box.height*1000-region.y0};window.addEventListener('pointermove',adjust);window.addEventListener('pointerup',stopAdjust,{once:true})}
 function pageAtPoint(x:number,y:number){for(const element of document.elementsFromPoint(x,y)){const page=(element as HTMLElement).closest?.<HTMLElement>('.paper-source-page');if(page)return page}return null}
-function adjust(event:PointerEvent){if(!drag)return;const next={...drag.region};if(drag.mode==='move'){const target=pageAtPoint(event.clientX,event.clientY);if(!target)return;const box=target.getBoundingClientRect(),width=next.x1-next.x0,height=next.y1-next.y0;next.pageNumber=Number(target.dataset.page)||next.pageNumber;next.x0=clamp((event.clientX-box.left)/box.width*1000-drag.grabX,0,1000-width);next.y0=clamp((event.clientY-box.top)/box.height*1000-drag.grabY,0,1000-height);next.x1=next.x0+width;next.y1=next.y0+height}else{const dx=(event.clientX-drag.x)/drag.box.width*1000,dy=(event.clientY-drag.y)/drag.box.height*1000;if(drag.mode.includes('w'))next.x0=clamp(drag.region.x0+dx,0,next.x1-10);if(drag.mode.includes('e'))next.x1=clamp(drag.region.x1+dx,next.x0+10,1000);if(drag.mode.includes('n'))next.y0=clamp(drag.region.y0+dy,0,next.y1-10);if(drag.mode.includes('s'))next.y1=clamp(drag.region.y1+dy,next.y0+10,1000)}const all=(props.question.sourceRegions||[]).map(item=>({...item}));all[drag.index]=next;emit('update:regions',all)}
+function adjust(event:PointerEvent){if(!drag)return;const next={...drag.region};if(drag.mode==='move'){const target=pageAtPoint(event.clientX,event.clientY);if(!target)return;const box=target.getBoundingClientRect(),width=next.x1-next.x0,height=next.y1-next.y0;next.pageNumber=Number(target.dataset.page)||next.pageNumber;next.x0=clamp((event.clientX-box.left)/box.width*1000-drag.grabX,0,1000-width);next.y0=clamp((event.clientY-box.top)/box.height*1000-drag.grabY,0,1000-height);next.x1=next.x0+width;next.y1=next.y0+height}else{const dx=(event.clientX-drag.x)/drag.box.width*1000,dy=(event.clientY-drag.y)/drag.box.height*1000;if(drag.mode.includes('w'))next.x0=clamp(drag.region.x0+dx,0,next.x1-10);if(drag.mode.includes('e'))next.x1=clamp(drag.region.x1+dx,next.x0+10,1000);if(drag.mode.includes('n'))next.y0=clamp(drag.region.y0+dy,0,next.y1-10);if(drag.mode.includes('s'))next.y1=clamp(drag.region.y1+dy,next.y0+10,1000)}const all=(props.question?.sourceRegions||[]).map(item=>({...item}));all[drag.index]=next;emit('update:regions',all)}
 function stopAdjust(){drag=null;window.removeEventListener('pointermove',adjust)}
 function clamp(value:number,min:number,max:number){return Math.round(Math.max(min,Math.min(max,value)))}
-watch(()=>props.paper.id,loadPaper,{immediate:true});watch(()=>props.question.id,()=>{const pages=[...new Set((props.question.sourceRegions||[]).map(region=>region.pageNumber))];pages.forEach(page=>loadPage(page,loadGeneration));nextTick().then(scrollToQuestion)});onBeforeUnmount(()=>{release();stopAdjust()})
+watch(()=>props.paper.id,loadPaper,{immediate:true});watch(()=>props.question?.id,()=>{const pages=[...new Set((props.question?.sourceRegions||[]).map(region=>region.pageNumber))];pages.forEach(page=>loadPage(page,loadGeneration));nextTick().then(scrollToQuestion)});onBeforeUnmount(()=>{release();stopAdjust()})
 </script>
 
 <template>
@@ -56,8 +57,8 @@ watch(()=>props.paper.id,loadPaper,{immediate:true});watch(()=>props.question.id
    <div v-for="(url,pageIndex) in pageUrls" :key="pageIndex" class="paper-source-page" :class="{'page-pending':!renderedPages.has(pageIndex+1)}" :data-page="pageIndex+1">
     <div class="page-number">第 {{pageIndex+1}} 页</div><img v-if="url" :src="url" :alt="`${paper.title} 第 ${pageIndex+1} 页`" :loading="regionsForPage(pageIndex+1).length?'eager':'lazy'" draggable="false" @load="pageRendered(pageIndex+1)"/>
     <div v-if="!renderedPages.has(pageIndex+1)" class="page-loading"><LoaderCircle v-if="!pageErrors.has(pageIndex+1)" class="spin"/><span>{{pageErrors.has(pageIndex+1)?'本页加载失败':'正在加载本页'}}</span><button v-if="pageErrors.has(pageIndex+1)" @click="loadPage(pageIndex+1,loadGeneration)">重试</button></div>
-    <div v-for="item in renderedPages.has(pageIndex+1)?regionsForPage(pageIndex+1):[]" :key="item.index" class="paper-question-region" :style="{left:`${item.region.x0/10}%`,top:`${item.region.y0/10}%`,width:`${(item.region.x1-item.region.x0)/10}%`,height:`${(item.region.y1-item.region.y0)/10}%`}" @pointerdown="startAdjust($event,item.index,'move')">
-     <div class="region-float-actions" @pointerdown.stop><span>第 {{question.number}} 题</span><em><Move/>拖动或缩放红框</em><button :disabled="recognizing" @click.stop="emit('recognize')"><ScanLine/>{{recognizing?'识别中':'重新识别'}}</button></div>
+    <div v-for="item in canEdit&&renderedPages.has(pageIndex+1)?regionsForPage(pageIndex+1):[]" :key="item.index" class="paper-question-region" :style="{left:`${item.region.x0/10}%`,top:`${item.region.y0/10}%`,width:`${(item.region.x1-item.region.x0)/10}%`,height:`${(item.region.y1-item.region.y0)/10}%`}" @pointerdown="startAdjust($event,item.index,'move')">
+     <div class="region-float-actions" @pointerdown.stop><span>第 {{question?.number}} 题</span><em><Move/>拖动或缩放红框</em><button :disabled="recognizing" @click.stop="emit('recognize')"><ScanLine/>{{recognizing?'识别中':'重新识别'}}</button></div>
      <i v-for="handle in handles" :key="handle" class="resize-handle" :data-handle="handle" @pointerdown="startAdjust($event,item.index,handle)"></i>
     </div>
    </div>

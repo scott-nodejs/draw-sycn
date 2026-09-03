@@ -1,9 +1,10 @@
-import { nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { LoaderCircle, Move, ScanLine } from 'lucide-vue-next';
 import { api } from '../api';
 const handles = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
 const props = defineProps();
 const emit = defineEmits();
+const canEdit = computed(() => props.editable !== false && Boolean(props.question));
 const viewport = ref(null), pageUrls = ref([]), loadingPages = ref(new Set()), renderedPages = ref(new Set()), pageErrors = ref(new Set()), loadError = ref('');
 let drag = null;
 let loadGeneration = 0;
@@ -55,7 +56,7 @@ async function loadPaper() {
     const generation = loadGeneration;
     const count = Math.max(1, props.paper.pageCount);
     pageUrls.value = Array(count).fill(null);
-    const questionPages = [...new Set((props.question.sourceRegions || []).map(region => region.pageNumber))].filter(page => page >= 1 && page <= count);
+    const questionPages = [...new Set((props.question?.sourceRegions || []).map(region => region.pageNumber))].filter(page => page >= 1 && page <= count);
     const remaining = Array.from({ length: count }, (_, index) => index + 1).filter(page => !questionPages.includes(page));
     await Promise.all(questionPages.map(page => loadPage(page, generation)));
     if (generation !== loadGeneration)
@@ -63,10 +64,10 @@ async function loadPaper() {
     for (let index = 0; index < remaining.length; index += 2)
         await Promise.all(remaining.slice(index, index + 2).map(page => loadPage(page, generation)));
 }
-function regionsForPage(page) { return (props.question.sourceRegions || []).map((region, index) => ({ region, index })).filter(item => item.region.pageNumber === page); }
+function regionsForPage(page) { return (props.question?.sourceRegions || []).map((region, index) => ({ region, index })).filter(item => item.region.pageNumber === page); }
 function scrollToQuestion() { const container = viewport.value, target = container?.querySelector('.paper-question-region'); if (!container || !target)
     return; container.scrollTo({ top: Math.max(0, target.offsetTop + target.parentElement.offsetTop - container.clientHeight * .25), behavior: 'smooth' }); }
-function startAdjust(event, index, mode) { const page = event.currentTarget.closest('.paper-source-page'), region = props.question.sourceRegions?.[index]; if (!page || !region)
+function startAdjust(event, index, mode) { const page = event.currentTarget.closest('.paper-source-page'), region = props.question?.sourceRegions?.[index]; if (!canEdit.value || !page || !region)
     return; event.preventDefault(); event.stopPropagation(); const box = page.getBoundingClientRect(); drag = { index, mode, x: event.clientX, y: event.clientY, region: { ...region }, box, grabX: (event.clientX - box.left) / box.width * 1000 - region.x0, grabY: (event.clientY - box.top) / box.height * 1000 - region.y0 }; window.addEventListener('pointermove', adjust); window.addEventListener('pointerup', stopAdjust, { once: true }); }
 function pageAtPoint(x, y) { for (const element of document.elementsFromPoint(x, y)) {
     const page = element.closest?.('.paper-source-page');
@@ -95,11 +96,11 @@ else {
         next.y0 = clamp(drag.region.y0 + dy, 0, next.y1 - 10);
     if (drag.mode.includes('s'))
         next.y1 = clamp(drag.region.y1 + dy, next.y0 + 10, 1000);
-} const all = (props.question.sourceRegions || []).map(item => ({ ...item })); all[drag.index] = next; emit('update:regions', all); }
+} const all = (props.question?.sourceRegions || []).map(item => ({ ...item })); all[drag.index] = next; emit('update:regions', all); }
 function stopAdjust() { drag = null; window.removeEventListener('pointermove', adjust); }
 function clamp(value, min, max) { return Math.round(Math.max(min, Math.min(max, value))); }
 watch(() => props.paper.id, loadPaper, { immediate: true });
-watch(() => props.question.id, () => { const pages = [...new Set((props.question.sourceRegions || []).map(region => region.pageNumber))]; pages.forEach(page => loadPage(page, loadGeneration)); nextTick().then(scrollToQuestion); });
+watch(() => props.question?.id, () => { const pages = [...new Set((props.question?.sourceRegions || []).map(region => region.pageNumber))]; pages.forEach(page => loadPage(page, loadGeneration)); nextTick().then(scrollToQuestion); });
 onBeforeUnmount(() => { release(); stopAdjust(); });
 const __VLS_ctx = {
     ...{},
@@ -224,14 +225,14 @@ else {
                 });
             }
         }
-        for (const [item] of __VLS_vFor((__VLS_ctx.renderedPages.has(pageIndex + 1) ? __VLS_ctx.regionsForPage(pageIndex + 1) : []))) {
+        for (const [item] of __VLS_vFor((__VLS_ctx.canEdit && __VLS_ctx.renderedPages.has(pageIndex + 1) ? __VLS_ctx.regionsForPage(pageIndex + 1) : []))) {
             __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
                 ...{ onPointerdown: (...[$event]) => {
                         if (!!(__VLS_ctx.loadError && __VLS_ctx.pageUrls.every(url => !url)))
                             throw 0;
                         return (__VLS_ctx.startAdjust($event, item.index, 'move'));
                         // @ts-ignore
-                        [renderedPages, regionsForPage, startAdjust,];
+                        [renderedPages, regionsForPage, canEdit, startAdjust,];
                     } },
                 key: (item.index),
                 ...{ class: "paper-question-region" },
@@ -244,7 +245,7 @@ else {
             });
             /** @type {__VLS_StyleScopedClasses['region-float-actions']} */ ;
             __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
-            (__VLS_ctx.question.number);
+            (__VLS_ctx.question?.number);
             __VLS_asFunctionalElement1(__VLS_intrinsics.em, __VLS_intrinsics.em)({});
             let __VLS_5;
             /** @ts-ignore @type { | typeof __VLS_components.Move} */
