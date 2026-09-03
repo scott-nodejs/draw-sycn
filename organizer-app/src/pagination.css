@@ -213,14 +213,66 @@
 .content:has(.paper-view-switch) {
   width: 100%;
   max-width: none;
-  padding-left: 18px;
-  padding-right: 18px;
+  padding-left: 14px;
+  padding-right: 14px;
   position: relative;
 }
 
 .content:has(.paper-view-switch) .paper-grid {
-  grid-template-columns: repeat(4, minmax(230px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.content:has(.paper-view-switch) .paper-card {
+  min-width: 0;
+}
+
+.content:has(.paper-view-switch) .cover {
+  height: 145px;
+  padding: 15px;
+}
+
+.content:has(.paper-view-switch) .cover > b {
+  right: 15px;
+  bottom: 13px;
+}
+
+.content:has(.paper-view-switch) .mini-paper {
+  width: 108px;
+  height: 96px;
+  margin-top: 3px;
+  padding: 13px;
+}
+
+.content:has(.paper-view-switch) .mini-paper i {
+  margin: 8px 0;
+}
+
+.content:has(.paper-view-switch) .card-body {
+  padding: 14px 16px 12px;
+}
+
+.content:has(.paper-view-switch) .card-body h3 {
+  display: -webkit-box;
+  height: 46px;
+  margin: 12px 0 7px;
+  overflow: hidden;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.content:has(.paper-view-switch) .card-body p {
+  margin: 0 0 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.content:has(.paper-view-switch) .card-body > button {
+  height: 34px;
+  margin-top: 7px;
 }
 
 .content:has(.paper-view-switch) .paper-subject-filter {
