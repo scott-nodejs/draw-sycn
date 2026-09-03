@@ -278,6 +278,20 @@
   margin-top: 7px;
 }
 
+.content:has(.paper-view-switch) .status[data-status="failed"] {
+  background: #fff0f1;
+  color: #c74653;
+}
+
+.content:has(.paper-view-switch) .status[data-status="paused"] {
+  background: #fff5df;
+  color: #a96d12;
+}
+
+.content:has(.paper-view-switch) .meter i[data-status="failed"] {
+  background: #dc5964;
+}
+
 .content:has(.paper-view-switch) .paper-subject-filter {
   position: absolute;
   top: 28px;

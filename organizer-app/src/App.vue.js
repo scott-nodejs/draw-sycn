@@ -30,8 +30,8 @@ const paperViewMode = ref('list'), workspacePaperId = ref('');
 const orderedSubjects = (values) => { const unique = [...new Set(values.map(value => value?.trim()).filter((value) => Boolean(value)))]; return ['数学', '物理', ...unique.filter(value => !['数学', '物理'].includes(value)).sort((a, b) => a.localeCompare(b, 'zh-CN'))]; };
 const paperSubjects = computed(() => orderedSubjects(papers.value.map(p => p.subject)));
 const questionSubjects = computed(() => orderedSubjects(confirmedQuestions.value.map(q => q.sourceSubject)));
-const paperCounts = computed(() => ({ queued: papers.value.filter(p => p.status === 'queued').length, processing: papers.value.filter(p => ['processing', 'paused'].includes(p.status)).length, review: papers.value.filter(p => p.status === 'review').length }));
-const filteredPapers = computed(() => papers.value.filter(p => (paperFilter.value === 'all' || p.status === paperFilter.value || (paperFilter.value === 'processing' && p.status === 'paused')) && (!paperSubject.value || p.subject === paperSubject.value) && (!paperSearch.value || `${p.title} ${p.grade} ${p.subject}`.toLowerCase().includes(paperSearch.value.toLowerCase()))));
+const paperCounts = computed(() => ({ all: papers.value.filter(p => ['review', 'ready'].includes(p.status)).length, review: papers.value.filter(p => p.status === 'review').length, ready: papers.value.filter(p => p.status === 'ready').length }));
+const filteredPapers = computed(() => papers.value.filter(p => ['review', 'ready'].includes(p.status) && (paperFilter.value === 'all' || p.status === paperFilter.value) && (!paperSubject.value || p.subject === paperSubject.value) && (!paperSearch.value || `${p.title} ${p.grade} ${p.subject}`.toLowerCase().includes(paperSearch.value.toLowerCase()))));
 const taskCounts = computed(() => ({ queued: papers.value.filter(p => p.status === 'queued').length, running: papers.value.filter(p => p.status === 'processing').length, paused: papers.value.filter(p => p.status === 'paused').length, failed: papers.value.filter(p => p.status === 'failed').length, completed: papers.value.filter(p => !['processing', 'queued', 'paused', 'failed'].includes(p.status)).length }));
 const filteredTasks = computed(() => papers.value.filter(p => (!taskSubject.value || p.subject === taskSubject.value) && (taskFilter.value === 'all' || (taskFilter.value === 'queued' && p.status === 'queued') || (taskFilter.value === 'running' && ['processing', 'paused'].includes(p.status)) || (taskFilter.value === 'failed' && p.status === 'failed') || (taskFilter.value === 'completed' && !['processing', 'queued', 'paused', 'failed'].includes(p.status)))));
 const subjectKnowledgePoints = computed(() => knowledgePoints.value.filter(item => !questionSubject.value || item.subject === questionSubject.value));
@@ -59,6 +59,8 @@ const knowledgeName = (id) => knowledgePoints.value.find(item => item.id === id)
 const stats = computed(() => ({ total: papers.value.length, parsing: papers.value.filter(p => ['queued', 'processing', 'paused'].includes(p.status)).length, reviewing: papers.value.filter(p => p.status === 'review').length, done: papers.value.reduce((n, p) => n + p.reviewedCount, 0), published: sets.value.filter(s => s.status === 'published').length }));
 function notify(v) { toast.value = v; setTimeout(() => toast.value = '', 2400); }
 function warningLabel(value) { return { question_start_not_found: '未定位到题号，当前使用整页区域', last_question_boundary_uses_document_end: '末题区域延伸到试卷内容结尾', cross_page_question_merged: '已自动合并跨页内容', source_region_verified_from_layout_v3: '题目区域已通过版面检测校验' }[value] || value; }
+const paperStatusLabel = (paper) => paper.status === 'queued' ? '排队中' : paper.status === 'processing' ? '解析中' : paper.status === 'paused' ? '已暂停' : paper.status === 'failed' ? '解析失败' : paper.status === 'review' ? '待校对' : '可发行';
+const paperActionLabel = (paper) => paper.status === 'queued' ? '等待解析' : paper.status === 'processing' ? '查看解析进度' : paper.status === 'paused' ? '查看暂停进度' : paper.status === 'failed' ? '查看失败原因' : paper.status === 'ready' ? '查看已校对试题' : '进入校对';
 async function run(task) { busy.value = true; error.value = ''; try {
     await task();
 }
@@ -74,7 +76,7 @@ async function load() { await Promise.all([api.papers().then(v => papers.value =
 async function toggleQuestionKnowledge(q, pointId) { const ids = new Set(q.knowledgePointIds || []); ids.has(pointId) ? ids.delete(pointId) : ids.add(pointId); await run(async () => { const result = await api.assignKnowledgePoints(q.id, [...ids]); q.knowledgePointIds = result.knowledgePointIds; knowledgePoints.value = await api.knowledgePoints(); notify('知识点已更新'); }); }
 async function createKnowledgePoint() { const name = newKnowledgeName.value.trim(); if (!name)
     return; await run(async () => { const parent = knowledgePoints.value.find(item => item.id === selectedKnowledgePoint.value); const subjectQuestion = confirmedQuestions.value.find(item => !questionSubject.value || item.sourceSubject === questionSubject.value); await api.createKnowledgePoint({ name, subject: parent?.subject || questionSubject.value || subjectQuestion?.sourceSubject || '数学', grade: parent?.grade || subjectQuestion?.sourceGrade || '', parentId: parent?.id }); newKnowledgeName.value = ''; knowledgePoints.value = await api.knowledgePoints(); notify('知识点已创建'); }); }
-async function openPaper(p) { selectedPaper.value = p; page.value = 'review'; processingDetail.value = null; regionEditing.value = false; if (['processing', 'queued', 'paused'].includes(p.status)) {
+async function openPaper(p) { selectedPaper.value = p; page.value = 'review'; processingDetail.value = null; regionEditing.value = false; if (['processing', 'queued', 'paused', 'failed'].includes(p.status)) {
     questions.value = [];
     processingDetail.value = await api.processing(p.id);
     return;
@@ -1442,51 +1444,7 @@ else {
         });
         /** @type {__VLS_StyleScopedClasses['filter']} */ ;
         /** @type {__VLS_StyleScopedClasses['active']} */ ;
-        (__VLS_ctx.papers.length);
-        __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
-            ...{ onClick: (...[$event]) => {
-                    if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
-                        throw 0;
-                    if (!!(!__VLS_ctx.current))
-                        throw 0;
-                    if (!!(__VLS_ctx.page === 'dashboard'))
-                        throw 0;
-                    if (!!(__VLS_ctx.page === 'tasks'))
-                        throw 0;
-                    if (!(__VLS_ctx.page === 'papers'))
-                        throw 0;
-                    return (__VLS_ctx.paperFilter = 'queued');
-                    // @ts-ignore
-                    [papers, paperFilter, paperFilter,];
-                } },
-            ...{ class: "filter" },
-            ...{ class: ({ active: __VLS_ctx.paperFilter === 'queued' }) },
-        });
-        /** @type {__VLS_StyleScopedClasses['filter']} */ ;
-        /** @type {__VLS_StyleScopedClasses['active']} */ ;
-        (__VLS_ctx.paperCounts.queued);
-        __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
-            ...{ onClick: (...[$event]) => {
-                    if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
-                        throw 0;
-                    if (!!(!__VLS_ctx.current))
-                        throw 0;
-                    if (!!(__VLS_ctx.page === 'dashboard'))
-                        throw 0;
-                    if (!!(__VLS_ctx.page === 'tasks'))
-                        throw 0;
-                    if (!(__VLS_ctx.page === 'papers'))
-                        throw 0;
-                    return (__VLS_ctx.paperFilter = 'processing');
-                    // @ts-ignore
-                    [paperFilter, paperFilter, paperCounts,];
-                } },
-            ...{ class: "filter" },
-            ...{ class: ({ active: __VLS_ctx.paperFilter === 'processing' }) },
-        });
-        /** @type {__VLS_StyleScopedClasses['filter']} */ ;
-        /** @type {__VLS_StyleScopedClasses['active']} */ ;
-        (__VLS_ctx.paperCounts.processing);
+        (__VLS_ctx.paperCounts.all);
         __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
             ...{ onClick: (...[$event]) => {
                     if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
@@ -1509,6 +1467,28 @@ else {
         /** @type {__VLS_StyleScopedClasses['filter']} */ ;
         /** @type {__VLS_StyleScopedClasses['active']} */ ;
         (__VLS_ctx.paperCounts.review);
+        __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
+                        throw 0;
+                    if (!!(!__VLS_ctx.current))
+                        throw 0;
+                    if (!!(__VLS_ctx.page === 'dashboard'))
+                        throw 0;
+                    if (!!(__VLS_ctx.page === 'tasks'))
+                        throw 0;
+                    if (!(__VLS_ctx.page === 'papers'))
+                        throw 0;
+                    return (__VLS_ctx.paperFilter = 'ready');
+                    // @ts-ignore
+                    [paperFilter, paperFilter, paperCounts,];
+                } },
+            ...{ class: "filter" },
+            ...{ class: ({ active: __VLS_ctx.paperFilter === 'ready' }) },
+        });
+        /** @type {__VLS_StyleScopedClasses['filter']} */ ;
+        /** @type {__VLS_StyleScopedClasses['active']} */ ;
+        (__VLS_ctx.paperCounts.ready);
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
             ...{ class: "question-view-switch paper-view-switch" },
         });
@@ -1672,7 +1652,7 @@ else {
                     'data-status': (p.status),
                 });
                 /** @type {__VLS_StyleScopedClasses['status']} */ ;
-                (p.status === 'queued' ? '排队中' : p.status === 'processing' ? '解析中' : p.status === 'review' ? '待校对' : '可发行');
+                (__VLS_ctx.paperStatusLabel(p));
                 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
                     ...{ class: "paper-meta" },
                 });
@@ -1695,7 +1675,7 @@ else {
                                 throw 0;
                             return (__VLS_ctx.deletePaper(p));
                             // @ts-ignore
-                            [deletePaper,];
+                            [paperStatusLabel, deletePaper,];
                         } },
                     ...{ class: "paper-delete" },
                     title: "删除试卷",
@@ -1719,10 +1699,11 @@ else {
                 });
                 /** @type {__VLS_StyleScopedClasses['meter']} */ ;
                 __VLS_asFunctionalElement1(__VLS_intrinsics.i, __VLS_intrinsics.i)({
+                    'data-status': (p.status),
                     ...{ style: ({ width: p.progress + '%' }) },
                 });
                 __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({});
-                (p.status === 'queued' ? '等待解析' : p.status === 'processing' ? '查看解析进度' : p.status === 'ready' ? '查看已校对试题' : '进入校对');
+                (__VLS_ctx.paperActionLabel(p));
                 let __VLS_150;
                 /** @ts-ignore @type { | typeof __VLS_components.ChevronRight} */
                 ChevronRight;
@@ -1730,7 +1711,7 @@ else {
                 const __VLS_151 = __VLS_asFunctionalComponent1(__VLS_150, new __VLS_150({}));
                 const __VLS_152 = __VLS_151({}, ...__VLS_functionalComponentArgsRest(__VLS_151));
                 // @ts-ignore
-                [busy,];
+                [busy, paperActionLabel,];
             }
             if (__VLS_ctx.filteredPapers.length > __VLS_ctx.paperPageSize) {
                 __VLS_asFunctionalElement1(__VLS_intrinsics.nav, __VLS_intrinsics.nav)({
