@@ -141,6 +141,9 @@
 .question-view-switch button { height:31px; border:0; border-radius:6px; padding:0 12px; background:transparent; color:#68758a; }
 .question-view-switch button.active { background:#edf4ff; color:#235acc; font-weight:700; }
 .question-list-tools .question-view-switch + span { margin-left:4px; }
+.paper-view-switch { flex-shrink:0; }
+.paper-view-switch button { display:flex; align-items:center; gap:6px; white-space:nowrap; }
+.paper-view-switch button svg { width:15px; height:15px; }
 .question-compare { display:grid; height:calc(100% - 58px); min-height:520px; grid-template-rows:58px minmax(0,1fr); overflow:hidden; border:1px solid var(--line); border-radius:8px; background:#fff; box-shadow:0 6px 22px rgba(35,53,82,.04); }
 .question-compare-head { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:0 16px; border-bottom:1px solid var(--line); }
 .question-compare-head > div:first-child { display:grid; gap:3px; min-width:0; }
