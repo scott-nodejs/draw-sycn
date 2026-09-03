@@ -224,7 +224,10 @@
 }
 
 .content:has(.paper-view-switch) .paper-card {
+  width: 100%;
+  max-width: 356px;
   min-width: 0;
+  justify-self: center;
 }
 
 .content:has(.paper-view-switch) .cover {
