@@ -213,12 +213,22 @@
 .content:has(.paper-view-switch) {
   width: 100%;
   max-width: none;
-  padding-left: 0;
-  padding-right: 0;
+  padding-left: 18px;
+  padding-right: 18px;
+  position: relative;
 }
 
 .content:has(.paper-view-switch) .paper-grid {
   grid-template-columns: repeat(4, minmax(230px, 1fr));
+  gap: 20px;
+}
+
+.content:has(.paper-view-switch) .paper-subject-filter {
+  position: absolute;
+  top: 28px;
+  right: 310px;
+  z-index: 2;
+  margin: 0;
 }
 
 @media (max-width: 1500px) {
