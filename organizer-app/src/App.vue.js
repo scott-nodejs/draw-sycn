@@ -1,5 +1,5 @@
 import { computed, onMounted, ref, watch } from 'vue';
-import { AlertTriangle, Archive, BookOpenCheck, CheckCircle2, ChevronLeft, ChevronRight, FilePenLine, FileStack, LayoutDashboard, LocateFixed, LogOut, Plus, RefreshCw, Search, Settings2, ShoppingBag, Tags, Trash2, UploadCloud, WandSparkles } from 'lucide-vue-next';
+import { AlertTriangle, Archive, BookOpenCheck, CheckCircle2, ChevronLeft, ChevronRight, FilePenLine, FileStack, LayoutDashboard, LocateFixed, LogOut, Pause, Play, Plus, RefreshCw, Search, Settings2, ShoppingBag, Tags, Trash2, UploadCloud, WandSparkles } from 'lucide-vue-next';
 import { api, optionText, session } from './api';
 import SourcePaperPreview from './components/SourcePaperPreview.vue';
 import MathPreview from './components/MathPreview.vue';
@@ -7,6 +7,7 @@ import LayoutCanvasEditor from './components/LayoutCanvasEditor.vue';
 import QuestionSetAssembler from './components/QuestionSetAssembler.vue';
 import QuestionFinalPreview from './components/QuestionFinalPreview.vue';
 import QuestionAnswerEditor from './components/QuestionAnswerEditor.vue';
+import QuestionCompareView from './components/QuestionCompareView.vue';
 const current = ref(session.get()), page = ref('dashboard'), papers = ref([]), questions = ref([]), confirmedQuestions = ref([]), sets = ref([]), selectedPaper = ref(null), selectedQuestion = ref(null), busy = ref(false), error = ref(''), toast = ref('');
 const processingDetail = ref(null);
 const regionEditing = ref(false);
@@ -15,39 +16,45 @@ const layoutOpen = ref(false);
 const authMode = ref('login'), auth = ref({ name: '', account: '', password: '' });
 const showAuth = ref(false);
 const uploadOpen = ref(false), files = ref([]), upload = ref({ title: '', subject: '数学', grade: '初三' }), uploadError = ref('');
-const MAX_UPLOAD_BYTES = 300 * 1024 * 1024;
+const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 const uploadSize = computed(() => files.value.reduce((total, file) => total + file.size, 0));
 const setOpen = ref(false), setForm = ref({ title: '', description: '', subject: '数学', grade: '初三', collectionType: 'topic', topicLabel: '', price: 19.9, questionIds: [] });
 const setTab = ref('mine'), editingSetId = ref(null);
-const knowledgePoints = ref([]), selectedKnowledgePoint = ref(''), questionSearch = ref(''), questionType = ref(''), questionDifficulty = ref(''), editingKnowledgeQuestion = ref(null), newKnowledgeName = ref('');
+const knowledgePoints = ref([]), selectedKnowledgePoint = ref(''), questionSearch = ref(''), questionType = ref(''), questionDifficulty = ref(''), questionSubject = ref(''), editingKnowledgeQuestion = ref(null), newKnowledgeName = ref('');
 const expandedKnowledge = ref(new Set());
 const libraryEditingQuestion = ref(null);
-const pageSize = 10, paperPageSize = 9, paperPage = ref(1), taskPage = ref(1), questionPage = ref(1), paperSearch = ref(''), paperFilter = ref('all'), taskFilter = ref('all');
-const paperCounts = computed(() => ({ queued: papers.value.filter(p => p.status === 'queued').length, processing: papers.value.filter(p => p.status === 'processing').length, review: papers.value.filter(p => p.status === 'review').length }));
-const filteredPapers = computed(() => papers.value.filter(p => (paperFilter.value === 'all' || p.status === paperFilter.value) && (!paperSearch.value || `${p.title} ${p.grade} ${p.subject}`.toLowerCase().includes(paperSearch.value.toLowerCase()))));
-const taskCounts = computed(() => ({ queued: papers.value.filter(p => p.status === 'queued').length, running: papers.value.filter(p => p.status === 'processing').length, failed: papers.value.filter(p => p.status === 'failed').length, completed: papers.value.filter(p => !['processing', 'queued', 'failed'].includes(p.status)).length }));
-const filteredTasks = computed(() => papers.value.filter(p => taskFilter.value === 'all' || (taskFilter.value === 'queued' && p.status === 'queued') || (taskFilter.value === 'running' && p.status === 'processing') || (taskFilter.value === 'failed' && p.status === 'failed') || (taskFilter.value === 'completed' && !['processing', 'queued', 'failed'].includes(p.status))));
+const questionViewMode = ref('list'), compareQuestionIndex = ref(0);
+const pageSize = 10, paperPageSize = 9, paperPage = ref(1), taskPage = ref(1), questionPage = ref(1), paperSearch = ref(''), paperSubject = ref(''), taskSubject = ref(''), paperFilter = ref('all'), taskFilter = ref('all');
+const orderedSubjects = (values) => { const unique = [...new Set(values.map(value => value?.trim()).filter((value) => Boolean(value)))]; return ['数学', '物理', ...unique.filter(value => !['数学', '物理'].includes(value)).sort((a, b) => a.localeCompare(b, 'zh-CN'))]; };
+const paperSubjects = computed(() => orderedSubjects(papers.value.map(p => p.subject)));
+const questionSubjects = computed(() => orderedSubjects(confirmedQuestions.value.map(q => q.sourceSubject)));
+const paperCounts = computed(() => ({ queued: papers.value.filter(p => p.status === 'queued').length, processing: papers.value.filter(p => ['processing', 'paused'].includes(p.status)).length, review: papers.value.filter(p => p.status === 'review').length }));
+const filteredPapers = computed(() => papers.value.filter(p => (paperFilter.value === 'all' || p.status === paperFilter.value || (paperFilter.value === 'processing' && p.status === 'paused')) && (!paperSubject.value || p.subject === paperSubject.value) && (!paperSearch.value || `${p.title} ${p.grade} ${p.subject}`.toLowerCase().includes(paperSearch.value.toLowerCase()))));
+const taskCounts = computed(() => ({ queued: papers.value.filter(p => p.status === 'queued').length, running: papers.value.filter(p => p.status === 'processing').length, paused: papers.value.filter(p => p.status === 'paused').length, failed: papers.value.filter(p => p.status === 'failed').length, completed: papers.value.filter(p => !['processing', 'queued', 'paused', 'failed'].includes(p.status)).length }));
+const filteredTasks = computed(() => papers.value.filter(p => (!taskSubject.value || p.subject === taskSubject.value) && (taskFilter.value === 'all' || (taskFilter.value === 'queued' && p.status === 'queued') || (taskFilter.value === 'running' && ['processing', 'paused'].includes(p.status)) || (taskFilter.value === 'failed' && p.status === 'failed') || (taskFilter.value === 'completed' && !['processing', 'queued', 'paused', 'failed'].includes(p.status)))));
+const subjectKnowledgePoints = computed(() => knowledgePoints.value.filter(item => !questionSubject.value || item.subject === questionSubject.value));
 function knowledgeDescendants(id) { const ids = new Set([id]); let changed = true; while (changed) {
     changed = false;
-    for (const point of knowledgePoints.value)
+    for (const point of subjectKnowledgePoints.value)
         if (point.parentId && ids.has(point.parentId) && !ids.has(point.id)) {
             ids.add(point.id);
             changed = true;
         }
 } return ids; }
-const filteredQuestions = computed(() => { const selected = selectedKnowledgePoint.value ? knowledgeDescendants(selectedKnowledgePoint.value) : null; return confirmedQuestions.value.filter(q => (!selected || q.knowledgePointIds?.some(id => selected.has(id))) && (!questionSearch.value || `${q.stem} ${q.sourceTitle || ''}`.toLowerCase().includes(questionSearch.value.toLowerCase())) && (!questionType.value || q.type === questionType.value) && (!questionDifficulty.value || q.difficulty === questionDifficulty.value)); });
+const filteredQuestions = computed(() => { const selected = selectedKnowledgePoint.value ? knowledgeDescendants(selectedKnowledgePoint.value) : null; return confirmedQuestions.value.filter(q => (!selected || q.knowledgePointIds?.some(id => selected.has(id))) && (!questionSubject.value || q.sourceSubject === questionSubject.value) && (!questionSearch.value || `${q.stem} ${q.sourceTitle || ''}`.toLowerCase().includes(questionSearch.value.toLowerCase())) && (!questionType.value || q.type === questionType.value) && (!questionDifficulty.value || q.difficulty === questionDifficulty.value)); });
+const subjectQuestionCount = computed(() => confirmedQuestions.value.filter(q => !questionSubject.value || q.sourceSubject === questionSubject.value).length);
 const pageCount = (total, size = pageSize) => Math.max(1, Math.ceil(total / size));
 const pageItems = (items, currentPage, size = pageSize) => items.slice((currentPage - 1) * size, currentPage * size);
 const paperPageCount = computed(() => pageCount(filteredPapers.value.length, paperPageSize)), taskPageCount = computed(() => pageCount(filteredTasks.value.length)), questionPageCount = computed(() => pageCount(filteredQuestions.value.length));
 const pagedPapers = computed(() => pageItems(filteredPapers.value, paperPage.value, paperPageSize)), pagedTasks = computed(() => pageItems(filteredTasks.value, taskPage.value)), pagedQuestions = computed(() => pageItems(filteredQuestions.value, questionPage.value));
 const visiblePages = (currentPage, totalPages) => Array.from({ length: Math.min(5, totalPages) }, (_, index) => Math.min(Math.max(1, currentPage - 2), Math.max(1, totalPages - 4)) + index);
-const rootKnowledgePoints = computed(() => knowledgePoints.value.filter(item => !item.parentId));
-const knowledgeChildren = (parentId) => knowledgePoints.value.filter(item => item.parentId === parentId);
+const rootKnowledgePoints = computed(() => subjectKnowledgePoints.value.filter(item => !item.parentId));
+const knowledgeChildren = (parentId) => subjectKnowledgePoints.value.filter(item => item.parentId === parentId);
 const visibleKnowledgePoints = computed(() => { const rows = []; const append = (point, depth) => { const children = knowledgeChildren(point.id); rows.push({ point, depth, hasChildren: children.length > 0 }); if (expandedKnowledge.value.has(point.id))
     children.forEach(child => append(child, depth + 1)); }; rootKnowledgePoints.value.forEach(root => append(root, 0)); return rows; });
 function toggleKnowledge(id) { const next = new Set(expandedKnowledge.value); next.has(id) ? next.delete(id) : next.add(id); expandedKnowledge.value = next; }
 const knowledgeName = (id) => knowledgePoints.value.find(item => item.id === id)?.name || '';
-const stats = computed(() => ({ total: papers.value.length, parsing: papers.value.filter(p => ['queued', 'processing'].includes(p.status)).length, reviewing: papers.value.filter(p => p.status === 'review').length, done: papers.value.reduce((n, p) => n + p.reviewedCount, 0), published: sets.value.filter(s => s.status === 'published').length }));
+const stats = computed(() => ({ total: papers.value.length, parsing: papers.value.filter(p => ['queued', 'processing', 'paused'].includes(p.status)).length, reviewing: papers.value.filter(p => p.status === 'review').length, done: papers.value.reduce((n, p) => n + p.reviewedCount, 0), published: sets.value.filter(s => s.status === 'published').length }));
 function notify(v) { toast.value = v; setTimeout(() => toast.value = '', 2400); }
 function warningLabel(value) { return { question_start_not_found: '未定位到题号，当前使用整页区域', last_question_boundary_uses_document_end: '末题区域延伸到试卷内容结尾', cross_page_question_merged: '已自动合并跨页内容', source_region_verified_from_layout_v3: '题目区域已通过版面检测校验' }[value] || value; }
 async function run(task) { busy.value = true; error.value = ''; try {
@@ -64,8 +71,8 @@ async function authenticate() { await run(async () => { const result = authMode.
 async function load() { await Promise.all([api.papers().then(v => papers.value = v), api.sets().then(v => sets.value = v), api.confirmedQuestions().then(v => confirmedQuestions.value = v), api.knowledgePoints().then(v => knowledgePoints.value = v)]); }
 async function toggleQuestionKnowledge(q, pointId) { const ids = new Set(q.knowledgePointIds || []); ids.has(pointId) ? ids.delete(pointId) : ids.add(pointId); await run(async () => { const result = await api.assignKnowledgePoints(q.id, [...ids]); q.knowledgePointIds = result.knowledgePointIds; knowledgePoints.value = await api.knowledgePoints(); notify('知识点已更新'); }); }
 async function createKnowledgePoint() { const name = newKnowledgeName.value.trim(); if (!name)
-    return; await run(async () => { const parent = knowledgePoints.value.find(item => item.id === selectedKnowledgePoint.value); await api.createKnowledgePoint({ name, subject: parent?.subject || confirmedQuestions.value[0]?.sourceSubject || '数学', grade: parent?.grade || confirmedQuestions.value[0]?.sourceGrade || '', parentId: parent?.id }); newKnowledgeName.value = ''; knowledgePoints.value = await api.knowledgePoints(); notify('知识点已创建'); }); }
-async function openPaper(p) { selectedPaper.value = p; page.value = 'review'; processingDetail.value = null; regionEditing.value = false; if (p.status === 'processing' || p.status === 'queued') {
+    return; await run(async () => { const parent = knowledgePoints.value.find(item => item.id === selectedKnowledgePoint.value); const subjectQuestion = confirmedQuestions.value.find(item => !questionSubject.value || item.sourceSubject === questionSubject.value); await api.createKnowledgePoint({ name, subject: parent?.subject || questionSubject.value || subjectQuestion?.sourceSubject || '数学', grade: parent?.grade || subjectQuestion?.sourceGrade || '', parentId: parent?.id }); newKnowledgeName.value = ''; knowledgePoints.value = await api.knowledgePoints(); notify('知识点已创建'); }); }
+async function openPaper(p) { selectedPaper.value = p; page.value = 'review'; processingDetail.value = null; regionEditing.value = false; if (['processing', 'queued', 'paused'].includes(p.status)) {
     questions.value = [];
     processingDetail.value = await api.processing(p.id);
     return;
@@ -100,17 +107,18 @@ async function reparsePaper() {
     });
 }
 async function retryTask(p) { await run(async () => { await api.retry(p.id); await load(); notify('已重新启动试卷解析任务'); }); }
+async function toggleTaskPause(p) { await run(async () => { p.status === 'paused' ? await api.resume(p.id) : await api.pause(p.id); await load(); notify(p.status === 'paused' ? '任务已继续运行' : '任务已暂停'); }); }
 async function deletePaper(p) { if (!window.confirm(`确定删除“${p.title}”吗？该试卷及其所属试题将从工作台中移除。`))
     return; await run(async () => { await api.deletePaper(p.id); await load(); notify('试卷及所属试题已删除'); }); }
 function selectUploadFiles(event) { const input = event.target, next = Array.from(input.files || []), size = next.reduce((total, file) => total + file.size, 0); uploadError.value = ''; if (next.some(file => file.size > MAX_UPLOAD_BYTES) || size > MAX_UPLOAD_BYTES) {
     files.value = [];
     input.value = '';
-    uploadError.value = '单个文件及本次上传总大小均不能超过 300MB';
+    uploadError.value = '单个文件及本次上传总大小均不能超过 100MB';
     return;
 } files.value = next; }
 async function submitUpload() { if (!files.value.length)
     return uploadError.value = '请选择 PDF、图片或 ZIP'; if (uploadSize.value > MAX_UPLOAD_BYTES)
-    return uploadError.value = '本次上传总大小不能超过 300MB'; uploadError.value = ''; await run(async () => { const result = await api.upload(files.value, upload.value); const uploaded = Array.isArray(result) ? result : [result]; uploadOpen.value = false; files.value = []; await load(); notify(uploaded.length > 1 ? `已创建 ${uploaded.length} 个解析任务` : '上传成功，AI 已开始解析'); await openPaper(uploaded[0]); }); }
+    return uploadError.value = '本次上传总大小不能超过 100MB'; uploadError.value = ''; await run(async () => { const result = await api.upload(files.value, upload.value); const uploaded = Array.isArray(result) ? result : [result]; uploadOpen.value = false; files.value = []; await load(); notify(uploaded.length > 1 ? `已创建 ${uploaded.length} 个解析任务` : '上传成功，AI 已开始解析'); await openPaper(uploaded[0]); }); }
 async function saveQuestion() { if (!selectedQuestion.value)
     return; await run(async () => { selectedQuestion.value = await api.saveQuestion({ ...selectedQuestion.value, status: 'confirmed' }); const i = questions.value.findIndex(q => q.id === selectedQuestion.value.id); questions.value[i] = selectedQuestion.value; notify('校对结果已保存'); await load(); }); }
 async function saveLibraryAnswer(question) { await run(async () => { const saved = await api.saveQuestion({ ...question, status: 'confirmed' }), merged = { ...question, ...saved }; const index = confirmedQuestions.value.findIndex(item => item.id === saved.id); if (index >= 0)
@@ -169,12 +177,14 @@ onMounted(() => { if (current.value)
     load().catch(e => error.value = e.message); });
 watch(page, (next, previous) => { if (next !== previous && next !== 'review')
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' }); });
-watch([paperSearch, paperFilter], () => paperPage.value = 1);
-watch(taskFilter, () => taskPage.value = 1);
-watch([selectedKnowledgePoint, questionSearch, questionType, questionDifficulty], () => questionPage.value = 1);
+watch([paperSearch, paperFilter, paperSubject], () => paperPage.value = 1);
+watch([taskFilter, taskSubject], () => taskPage.value = 1);
+watch([selectedKnowledgePoint, questionSearch, questionType, questionDifficulty, questionSubject], () => questionPage.value = 1);
+watch(questionSubject, () => { selectedKnowledgePoint.value = ''; expandedKnowledge.value = new Set(); });
 watch(paperPageCount, total => paperPage.value = Math.min(paperPage.value, total));
 watch(taskPageCount, total => taskPage.value = Math.min(taskPage.value, total));
 watch(questionPageCount, total => questionPage.value = Math.min(questionPage.value, total));
+watch(filteredQuestions, items => compareQuestionIndex.value = Math.min(compareQuestionIndex.value, Math.max(0, items.length - 1)));
 const __VLS_ctx = {
     ...{},
     ...{},
@@ -921,6 +931,10 @@ else {
         });
         /** @type {__VLS_StyleScopedClasses['running-dot']} */ ;
         (__VLS_ctx.taskCounts.running);
+        if (__VLS_ctx.taskCounts.paused) {
+            __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
+            (__VLS_ctx.taskCounts.paused);
+        }
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
             ...{ class: "task-filters" },
         });
@@ -937,7 +951,7 @@ else {
                         throw 0;
                     return (__VLS_ctx.taskFilter = 'all');
                     // @ts-ignore
-                    [page, taskCounts, taskFilter,];
+                    [page, taskCounts, taskCounts, taskCounts, taskFilter,];
                 } },
             ...{ class: ({ active: __VLS_ctx.taskFilter === 'all' }) },
         });
@@ -981,7 +995,7 @@ else {
         });
         /** @type {__VLS_StyleScopedClasses['active']} */ ;
         __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
-        (__VLS_ctx.taskCounts.running);
+        (__VLS_ctx.taskCounts.running + __VLS_ctx.taskCounts.paused);
         __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
             ...{ onClick: (...[$event]) => {
                     if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
@@ -994,7 +1008,7 @@ else {
                         throw 0;
                     return (__VLS_ctx.taskFilter = 'failed');
                     // @ts-ignore
-                    [taskCounts, taskFilter, taskFilter,];
+                    [taskCounts, taskCounts, taskFilter, taskFilter,];
                 } },
             ...{ class: ({ active: __VLS_ctx.taskFilter === 'failed' }) },
         });
@@ -1021,6 +1035,50 @@ else {
         __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
         (__VLS_ctx.taskCounts.completed);
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+            ...{ class: "subject-filter-strip" },
+        });
+        /** @type {__VLS_StyleScopedClasses['subject-filter-strip']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
+                        throw 0;
+                    if (!!(!__VLS_ctx.current))
+                        throw 0;
+                    if (!!(__VLS_ctx.page === 'dashboard'))
+                        throw 0;
+                    if (!(__VLS_ctx.page === 'tasks'))
+                        throw 0;
+                    return (__VLS_ctx.taskSubject = '');
+                    // @ts-ignore
+                    [taskCounts, taskFilter, taskSubject,];
+                } },
+            ...{ class: ({ active: !__VLS_ctx.taskSubject }) },
+        });
+        /** @type {__VLS_StyleScopedClasses['active']} */ ;
+        for (const [subject] of __VLS_vFor((__VLS_ctx.paperSubjects))) {
+            __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
+                            throw 0;
+                        if (!!(!__VLS_ctx.current))
+                            throw 0;
+                        if (!!(__VLS_ctx.page === 'dashboard'))
+                            throw 0;
+                        if (!(__VLS_ctx.page === 'tasks'))
+                            throw 0;
+                        return (__VLS_ctx.taskSubject = subject);
+                        // @ts-ignore
+                        [taskSubject, taskSubject, paperSubjects,];
+                    } },
+                key: (subject),
+                ...{ class: ({ active: __VLS_ctx.taskSubject === subject }) },
+            });
+            /** @type {__VLS_StyleScopedClasses['active']} */ ;
+            (subject);
+            // @ts-ignore
+            [taskSubject,];
+        }
+        __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
             ...{ class: "html-task-list" },
         });
         /** @type {__VLS_StyleScopedClasses['html-task-list']} */ ;
@@ -1036,13 +1094,13 @@ else {
                 'data-status': (p.status),
             });
             /** @type {__VLS_StyleScopedClasses['task-badge']} */ ;
-            (p.status === 'queued' ? '排队等待' : p.status === 'processing' ? '试卷解析' : p.status === 'failed' ? '解析失败' : '内容整理');
+            (p.status === 'queued' ? '排队等待' : p.status === 'processing' ? '试卷解析' : p.status === 'paused' ? '已暂停' : p.status === 'failed' ? '解析失败' : '内容整理');
             __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
                 ...{ class: "task-main" },
             });
             /** @type {__VLS_StyleScopedClasses['task-main']} */ ;
             __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
-            (p.status === 'queued' ? '排队解析：' : p.status === 'processing' ? '解析试卷：' : p.status === 'failed' ? '解析失败：' : '整理完成：');
+            (p.status === 'queued' ? '排队解析：' : p.status === 'processing' ? '解析试卷：' : p.status === 'paused' ? '暂停解析：' : p.status === 'failed' ? '解析失败：' : '整理完成：');
             (p.title);
             if (p.status === 'queued') {
                 __VLS_asFunctionalElement1(__VLS_intrinsics.small, __VLS_intrinsics.small)({});
@@ -1050,6 +1108,9 @@ else {
             else if (p.status === 'processing') {
                 __VLS_asFunctionalElement1(__VLS_intrinsics.small, __VLS_intrinsics.small)({});
                 (p.progress);
+            }
+            else if (p.status === 'paused') {
+                __VLS_asFunctionalElement1(__VLS_intrinsics.small, __VLS_intrinsics.small)({});
             }
             else if (p.status === 'failed') {
                 __VLS_asFunctionalElement1(__VLS_intrinsics.small, __VLS_intrinsics.small)({});
@@ -1073,7 +1134,7 @@ else {
             });
             /** @type {__VLS_StyleScopedClasses['task-end']} */ ;
             __VLS_asFunctionalElement1(__VLS_intrinsics.small, __VLS_intrinsics.small)({});
-            (p.status === 'queued' ? '排队中' : p.status === 'processing' ? '处理中' : p.status === 'failed' ? '失败' : '已完成');
+            (p.status === 'queued' ? '排队中' : p.status === 'processing' ? '处理中' : p.status === 'paused' ? '已暂停' : p.status === 'failed' ? '失败' : '已完成');
             (p.progress);
             if (p.status === 'failed') {
                 __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
@@ -1090,7 +1151,7 @@ else {
                                 throw 0;
                             return (__VLS_ctx.retryTask(p));
                             // @ts-ignore
-                            [taskCounts, taskFilter, pagedTasks, retryTask,];
+                            [pagedTasks, retryTask,];
                         } },
                     ...{ class: "primary" },
                     disabled: (__VLS_ctx.busy),
@@ -1101,6 +1162,78 @@ else {
                 __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
                     ...{ class: "ghost" },
                     disabled: true,
+                });
+                /** @type {__VLS_StyleScopedClasses['ghost']} */ ;
+            }
+            else if (p.status === 'processing' || p.status === 'paused') {
+                __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                    ...{ class: "task-actions" },
+                });
+                /** @type {__VLS_StyleScopedClasses['task-actions']} */ ;
+                __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+                    ...{ onClick: (...[$event]) => {
+                            if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
+                                throw 0;
+                            if (!!(!__VLS_ctx.current))
+                                throw 0;
+                            if (!!(__VLS_ctx.page === 'dashboard'))
+                                throw 0;
+                            if (!(__VLS_ctx.page === 'tasks'))
+                                throw 0;
+                            if (!!(p.status === 'failed'))
+                                throw 0;
+                            if (!!(p.status === 'queued'))
+                                throw 0;
+                            if (!(p.status === 'processing' || p.status === 'paused'))
+                                throw 0;
+                            return (__VLS_ctx.toggleTaskPause(p));
+                            // @ts-ignore
+                            [busy, toggleTaskPause,];
+                        } },
+                    ...{ class: "ghost icon-command" },
+                    title: (p.status === 'paused' ? '继续任务' : '暂停任务'),
+                    disabled: (__VLS_ctx.busy),
+                });
+                /** @type {__VLS_StyleScopedClasses['ghost']} */ ;
+                /** @type {__VLS_StyleScopedClasses['icon-command']} */ ;
+                if (p.status === 'paused') {
+                    let __VLS_100;
+                    /** @ts-ignore @type { | typeof __VLS_components.Play} */
+                    Play;
+                    // @ts-ignore
+                    const __VLS_101 = __VLS_asFunctionalComponent1(__VLS_100, new __VLS_100({}));
+                    const __VLS_102 = __VLS_101({}, ...__VLS_functionalComponentArgsRest(__VLS_101));
+                }
+                else {
+                    let __VLS_105;
+                    /** @ts-ignore @type { | typeof __VLS_components.Pause} */
+                    Pause;
+                    // @ts-ignore
+                    const __VLS_106 = __VLS_asFunctionalComponent1(__VLS_105, new __VLS_105({}));
+                    const __VLS_107 = __VLS_106({}, ...__VLS_functionalComponentArgsRest(__VLS_106));
+                }
+                (p.status === 'paused' ? '继续' : '暂停');
+                __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+                    ...{ onClick: (...[$event]) => {
+                            if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
+                                throw 0;
+                            if (!!(!__VLS_ctx.current))
+                                throw 0;
+                            if (!!(__VLS_ctx.page === 'dashboard'))
+                                throw 0;
+                            if (!(__VLS_ctx.page === 'tasks'))
+                                throw 0;
+                            if (!!(p.status === 'failed'))
+                                throw 0;
+                            if (!!(p.status === 'queued'))
+                                throw 0;
+                            if (!(p.status === 'processing' || p.status === 'paused'))
+                                throw 0;
+                            return (__VLS_ctx.openPaper(p));
+                            // @ts-ignore
+                            [busy, openPaper,];
+                        } },
+                    ...{ class: "ghost" },
                 });
                 /** @type {__VLS_StyleScopedClasses['ghost']} */ ;
             }
@@ -1119,14 +1252,15 @@ else {
                                 throw 0;
                             if (!!(p.status === 'queued'))
                                 throw 0;
+                            if (!!(p.status === 'processing' || p.status === 'paused'))
+                                throw 0;
                             return (__VLS_ctx.openPaper(p));
                             // @ts-ignore
-                            [busy, openPaper,];
+                            [openPaper,];
                         } },
                     ...{ class: "ghost" },
                 });
                 /** @type {__VLS_StyleScopedClasses['ghost']} */ ;
-                (p.status === 'processing' ? '查看进度' : '打开结果');
             }
             // @ts-ignore
             [];
@@ -1136,12 +1270,12 @@ else {
                 ...{ class: "task-empty" },
             });
             /** @type {__VLS_StyleScopedClasses['task-empty']} */ ;
-            let __VLS_100;
+            let __VLS_110;
             /** @ts-ignore @type { | typeof __VLS_components.RefreshCw} */
             RefreshCw;
             // @ts-ignore
-            const __VLS_101 = __VLS_asFunctionalComponent1(__VLS_100, new __VLS_100({}));
-            const __VLS_102 = __VLS_101({}, ...__VLS_functionalComponentArgsRest(__VLS_101));
+            const __VLS_111 = __VLS_asFunctionalComponent1(__VLS_110, new __VLS_110({}));
+            const __VLS_112 = __VLS_111({}, ...__VLS_functionalComponentArgsRest(__VLS_111));
             __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
             __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
             (__VLS_ctx.papers.length ? '当前筛选条件下没有任务。' : '上传试卷后，解析任务会显示在这里。');
@@ -1167,12 +1301,12 @@ else {
                     ...{ class: "primary" },
                 });
                 /** @type {__VLS_StyleScopedClasses['primary']} */ ;
-                let __VLS_105;
+                let __VLS_115;
                 /** @ts-ignore @type { | typeof __VLS_components.Plus} */
                 Plus;
                 // @ts-ignore
-                const __VLS_106 = __VLS_asFunctionalComponent1(__VLS_105, new __VLS_105({}));
-                const __VLS_107 = __VLS_106({}, ...__VLS_functionalComponentArgsRest(__VLS_106));
+                const __VLS_116 = __VLS_asFunctionalComponent1(__VLS_115, new __VLS_115({}));
+                const __VLS_117 = __VLS_116({}, ...__VLS_functionalComponentArgsRest(__VLS_116));
             }
         }
         if (__VLS_ctx.filteredTasks.length > __VLS_ctx.pageSize) {
@@ -1200,12 +1334,12 @@ else {
                 disabled: (__VLS_ctx.taskPage === 1),
                 title: "上一页",
             });
-            let __VLS_110;
+            let __VLS_120;
             /** @ts-ignore @type { | typeof __VLS_components.ChevronLeft} */
             ChevronLeft;
             // @ts-ignore
-            const __VLS_111 = __VLS_asFunctionalComponent1(__VLS_110, new __VLS_110({}));
-            const __VLS_112 = __VLS_111({}, ...__VLS_functionalComponentArgsRest(__VLS_111));
+            const __VLS_121 = __VLS_asFunctionalComponent1(__VLS_120, new __VLS_120({}));
+            const __VLS_122 = __VLS_121({}, ...__VLS_functionalComponentArgsRest(__VLS_121));
             for (const [value] of __VLS_vFor((__VLS_ctx.visiblePages(__VLS_ctx.taskPage, __VLS_ctx.taskPageCount)))) {
                 __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
                     ...{ onClick: (...[$event]) => {
@@ -1250,12 +1384,12 @@ else {
                 disabled: (__VLS_ctx.taskPage === __VLS_ctx.taskPageCount),
                 title: "下一页",
             });
-            let __VLS_115;
+            let __VLS_125;
             /** @ts-ignore @type { | typeof __VLS_components.ChevronRight} */
             ChevronRight;
             // @ts-ignore
-            const __VLS_116 = __VLS_asFunctionalComponent1(__VLS_115, new __VLS_115({}));
-            const __VLS_117 = __VLS_116({}, ...__VLS_functionalComponentArgsRest(__VLS_116));
+            const __VLS_126 = __VLS_asFunctionalComponent1(__VLS_125, new __VLS_125({}));
+            const __VLS_127 = __VLS_126({}, ...__VLS_functionalComponentArgsRest(__VLS_126));
             __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
             (__VLS_ctx.filteredTasks.length);
         }
@@ -1273,12 +1407,12 @@ else {
             ...{ class: "search" },
         });
         /** @type {__VLS_StyleScopedClasses['search']} */ ;
-        let __VLS_120;
+        let __VLS_130;
         /** @ts-ignore @type { | typeof __VLS_components.Search} */
         Search;
         // @ts-ignore
-        const __VLS_121 = __VLS_asFunctionalComponent1(__VLS_120, new __VLS_120({}));
-        const __VLS_122 = __VLS_121({}, ...__VLS_functionalComponentArgsRest(__VLS_121));
+        const __VLS_131 = __VLS_asFunctionalComponent1(__VLS_130, new __VLS_130({}));
+        const __VLS_132 = __VLS_131({}, ...__VLS_functionalComponentArgsRest(__VLS_131));
         __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
             placeholder: "搜索试卷名称、年级或学科",
         });
@@ -1372,6 +1506,55 @@ else {
         /** @type {__VLS_StyleScopedClasses['active']} */ ;
         (__VLS_ctx.paperCounts.review);
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+            ...{ class: "subject-filter-strip paper-subject-filter" },
+        });
+        /** @type {__VLS_StyleScopedClasses['subject-filter-strip']} */ ;
+        /** @type {__VLS_StyleScopedClasses['paper-subject-filter']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
+                        throw 0;
+                    if (!!(!__VLS_ctx.current))
+                        throw 0;
+                    if (!!(__VLS_ctx.page === 'dashboard'))
+                        throw 0;
+                    if (!!(__VLS_ctx.page === 'tasks'))
+                        throw 0;
+                    if (!(__VLS_ctx.page === 'papers'))
+                        throw 0;
+                    return (__VLS_ctx.paperSubject = '');
+                    // @ts-ignore
+                    [paperFilter, paperCounts, paperSubject,];
+                } },
+            ...{ class: ({ active: !__VLS_ctx.paperSubject }) },
+        });
+        /** @type {__VLS_StyleScopedClasses['active']} */ ;
+        for (const [subject] of __VLS_vFor((__VLS_ctx.paperSubjects))) {
+            __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
+                            throw 0;
+                        if (!!(!__VLS_ctx.current))
+                            throw 0;
+                        if (!!(__VLS_ctx.page === 'dashboard'))
+                            throw 0;
+                        if (!!(__VLS_ctx.page === 'tasks'))
+                            throw 0;
+                        if (!(__VLS_ctx.page === 'papers'))
+                            throw 0;
+                        return (__VLS_ctx.paperSubject = subject);
+                        // @ts-ignore
+                        [paperSubjects, paperSubject, paperSubject,];
+                    } },
+                key: (subject),
+                ...{ class: ({ active: __VLS_ctx.paperSubject === subject }) },
+            });
+            /** @type {__VLS_StyleScopedClasses['active']} */ ;
+            (subject);
+            // @ts-ignore
+            [paperSubject,];
+        }
+        __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
             ...{ class: "paper-grid" },
         });
         /** @type {__VLS_StyleScopedClasses['paper-grid']} */ ;
@@ -1390,7 +1573,7 @@ else {
                             throw 0;
                         return (__VLS_ctx.openPaper(p));
                         // @ts-ignore
-                        [openPaper, paperFilter, paperCounts, pagedPapers,];
+                        [openPaper, pagedPapers,];
                     } },
                 key: (p.id),
                 ...{ class: "paper-card" },
@@ -1453,12 +1636,12 @@ else {
                 disabled: (__VLS_ctx.busy),
             });
             /** @type {__VLS_StyleScopedClasses['paper-delete']} */ ;
-            let __VLS_125;
+            let __VLS_135;
             /** @ts-ignore @type { | typeof __VLS_components.Trash2} */
             Trash2;
             // @ts-ignore
-            const __VLS_126 = __VLS_asFunctionalComponent1(__VLS_125, new __VLS_125({}));
-            const __VLS_127 = __VLS_126({}, ...__VLS_functionalComponentArgsRest(__VLS_126));
+            const __VLS_136 = __VLS_asFunctionalComponent1(__VLS_135, new __VLS_135({}));
+            const __VLS_137 = __VLS_136({}, ...__VLS_functionalComponentArgsRest(__VLS_136));
             __VLS_asFunctionalElement1(__VLS_intrinsics.h3, __VLS_intrinsics.h3)({});
             (p.title);
             __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({});
@@ -1474,12 +1657,12 @@ else {
             });
             __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({});
             (p.status === 'queued' ? '等待解析' : p.status === 'processing' ? '查看解析进度' : p.status === 'ready' ? '查看已校对试题' : '进入校对');
-            let __VLS_130;
+            let __VLS_140;
             /** @ts-ignore @type { | typeof __VLS_components.ChevronRight} */
             ChevronRight;
             // @ts-ignore
-            const __VLS_131 = __VLS_asFunctionalComponent1(__VLS_130, new __VLS_130({}));
-            const __VLS_132 = __VLS_131({}, ...__VLS_functionalComponentArgsRest(__VLS_131));
+            const __VLS_141 = __VLS_asFunctionalComponent1(__VLS_140, new __VLS_140({}));
+            const __VLS_142 = __VLS_141({}, ...__VLS_functionalComponentArgsRest(__VLS_141));
             // @ts-ignore
             [busy,];
         }
@@ -1510,12 +1693,12 @@ else {
                 disabled: (__VLS_ctx.paperPage === 1),
                 title: "上一页",
             });
-            let __VLS_135;
+            let __VLS_145;
             /** @ts-ignore @type { | typeof __VLS_components.ChevronLeft} */
             ChevronLeft;
             // @ts-ignore
-            const __VLS_136 = __VLS_asFunctionalComponent1(__VLS_135, new __VLS_135({}));
-            const __VLS_137 = __VLS_136({}, ...__VLS_functionalComponentArgsRest(__VLS_136));
+            const __VLS_146 = __VLS_asFunctionalComponent1(__VLS_145, new __VLS_145({}));
+            const __VLS_147 = __VLS_146({}, ...__VLS_functionalComponentArgsRest(__VLS_146));
             for (const [value] of __VLS_vFor((__VLS_ctx.visiblePages(__VLS_ctx.paperPage, __VLS_ctx.paperPageCount)))) {
                 __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
                     ...{ onClick: (...[$event]) => {
@@ -1564,12 +1747,12 @@ else {
                 disabled: (__VLS_ctx.paperPage === __VLS_ctx.paperPageCount),
                 title: "下一页",
             });
-            let __VLS_140;
+            let __VLS_150;
             /** @ts-ignore @type { | typeof __VLS_components.ChevronRight} */
             ChevronRight;
             // @ts-ignore
-            const __VLS_141 = __VLS_asFunctionalComponent1(__VLS_140, new __VLS_140({}));
-            const __VLS_142 = __VLS_141({}, ...__VLS_functionalComponentArgsRest(__VLS_141));
+            const __VLS_151 = __VLS_asFunctionalComponent1(__VLS_150, new __VLS_150({}));
+            const __VLS_152 = __VLS_151({}, ...__VLS_functionalComponentArgsRest(__VLS_151));
             __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
             (__VLS_ctx.filteredPapers.length);
         }
@@ -1620,26 +1803,26 @@ else {
             disabled: (__VLS_ctx.busy),
         });
         /** @type {__VLS_StyleScopedClasses['ghost']} */ ;
-        let __VLS_145;
+        let __VLS_155;
         /** @ts-ignore @type { | typeof __VLS_components.RefreshCw} */
         RefreshCw;
         // @ts-ignore
-        const __VLS_146 = __VLS_asFunctionalComponent1(__VLS_145, new __VLS_145({}));
-        const __VLS_147 = __VLS_146({}, ...__VLS_functionalComponentArgsRest(__VLS_146));
+        const __VLS_156 = __VLS_asFunctionalComponent1(__VLS_155, new __VLS_155({}));
+        const __VLS_157 = __VLS_156({}, ...__VLS_functionalComponentArgsRest(__VLS_156));
         __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
             ...{ onClick: (__VLS_ctx.reparsePaper) },
             ...{ class: "reparse-button" },
-            disabled: (__VLS_ctx.busy || __VLS_ctx.selectedPaper?.status === 'processing' || __VLS_ctx.selectedPaper?.status === 'queued'),
+            disabled: (__VLS_ctx.busy || ['processing', 'queued', 'paused'].includes(__VLS_ctx.selectedPaper?.status || '')),
         });
         /** @type {__VLS_StyleScopedClasses['reparse-button']} */ ;
-        let __VLS_150;
+        let __VLS_160;
         /** @ts-ignore @type { | typeof __VLS_components.WandSparkles} */
         WandSparkles;
         // @ts-ignore
-        const __VLS_151 = __VLS_asFunctionalComponent1(__VLS_150, new __VLS_150({}));
-        const __VLS_152 = __VLS_151({}, ...__VLS_functionalComponentArgsRest(__VLS_151));
+        const __VLS_161 = __VLS_asFunctionalComponent1(__VLS_160, new __VLS_160({}));
+        const __VLS_162 = __VLS_161({}, ...__VLS_functionalComponentArgsRest(__VLS_161));
         (__VLS_ctx.busy ? '提交中' : '重新解析');
-        if (__VLS_ctx.selectedPaper?.status === 'processing' || __VLS_ctx.selectedPaper?.status === 'queued') {
+        if (__VLS_ctx.selectedPaper && ['processing', 'queued', 'paused'].includes(__VLS_ctx.selectedPaper.status)) {
             __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
                 ...{ class: "processing" },
             });
@@ -1648,16 +1831,16 @@ else {
                 ...{ class: "ai-orb" },
             });
             /** @type {__VLS_StyleScopedClasses['ai-orb']} */ ;
-            let __VLS_155;
+            let __VLS_165;
             /** @ts-ignore @type { | typeof __VLS_components.WandSparkles} */
             WandSparkles;
             // @ts-ignore
-            const __VLS_156 = __VLS_asFunctionalComponent1(__VLS_155, new __VLS_155({}));
-            const __VLS_157 = __VLS_156({}, ...__VLS_functionalComponentArgsRest(__VLS_156));
+            const __VLS_166 = __VLS_asFunctionalComponent1(__VLS_165, new __VLS_165({}));
+            const __VLS_167 = __VLS_166({}, ...__VLS_functionalComponentArgsRest(__VLS_166));
             __VLS_asFunctionalElement1(__VLS_intrinsics.h2, __VLS_intrinsics.h2)({});
-            (__VLS_ctx.selectedPaper.status === 'queued' ? '任务正在排队等待' : 'AI 正在识别并拆分试题');
+            (__VLS_ctx.selectedPaper.status === 'queued' ? '任务正在排队等待' : __VLS_ctx.selectedPaper.status === 'paused' ? '解析任务已暂停' : 'AI 正在识别并拆分试题');
             __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({});
-            (__VLS_ctx.selectedPaper.status === 'queued' ? '当前并发解析名额已满，任务开始后会自动更新进度。' : `当前进度 ${__VLS_ctx.selectedPaper.progress}%，解析完成后即可逐题校对。`);
+            (__VLS_ctx.selectedPaper.status === 'queued' ? '当前并发解析名额已满，任务开始后会自动更新进度。' : __VLS_ctx.selectedPaper.status === 'paused' ? '继续任务后将从当前解析节点恢复。' : `当前进度 ${__VLS_ctx.selectedPaper.progress}%，解析完成后即可逐题校对。`);
             __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
                 ...{ class: "big-meter" },
             });
@@ -1665,11 +1848,47 @@ else {
             __VLS_asFunctionalElement1(__VLS_intrinsics.i, __VLS_intrinsics.i)({
                 ...{ style: ({ width: __VLS_ctx.selectedPaper.progress + '%' }) },
             });
-            __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
-                ...{ onClick: (__VLS_ctx.refreshPaper) },
-                ...{ class: "primary" },
-            });
-            /** @type {__VLS_StyleScopedClasses['primary']} */ ;
+            if (__VLS_ctx.selectedPaper.status === 'paused') {
+                __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+                    ...{ onClick: (...[$event]) => {
+                            if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
+                                throw 0;
+                            if (!!(!__VLS_ctx.current))
+                                throw 0;
+                            if (!!(__VLS_ctx.page === 'dashboard'))
+                                throw 0;
+                            if (!!(__VLS_ctx.page === 'tasks'))
+                                throw 0;
+                            if (!!(__VLS_ctx.page === 'papers'))
+                                throw 0;
+                            if (!(__VLS_ctx.page === 'review'))
+                                throw 0;
+                            if (!(__VLS_ctx.selectedPaper && ['processing', 'queued', 'paused'].includes(__VLS_ctx.selectedPaper.status)))
+                                throw 0;
+                            if (!(__VLS_ctx.selectedPaper.status === 'paused'))
+                                throw 0;
+                            return (__VLS_ctx.toggleTaskPause(__VLS_ctx.selectedPaper));
+                            // @ts-ignore
+                            [busy, busy, busy, toggleTaskPause, selectedPaper, selectedPaper, selectedPaper, selectedPaper, selectedPaper, selectedPaper, selectedPaper, selectedPaper, selectedPaper, selectedPaper, selectedPaper, selectedPaper, selectedPaper, selectedPaper, refreshPaper, reparsePaper,];
+                        } },
+                    ...{ class: "primary" },
+                    disabled: (__VLS_ctx.busy),
+                });
+                /** @type {__VLS_StyleScopedClasses['primary']} */ ;
+                let __VLS_170;
+                /** @ts-ignore @type { | typeof __VLS_components.Play} */
+                Play;
+                // @ts-ignore
+                const __VLS_171 = __VLS_asFunctionalComponent1(__VLS_170, new __VLS_170({}));
+                const __VLS_172 = __VLS_171({}, ...__VLS_functionalComponentArgsRest(__VLS_171));
+            }
+            else {
+                __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+                    ...{ onClick: (__VLS_ctx.refreshPaper) },
+                    ...{ class: "primary" },
+                });
+                /** @type {__VLS_StyleScopedClasses['primary']} */ ;
+            }
         }
         else {
             __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
@@ -1703,11 +1922,11 @@ else {
                                 throw 0;
                             if (!(__VLS_ctx.page === 'review'))
                                 throw 0;
-                            if (!!(__VLS_ctx.selectedPaper?.status === 'processing' || __VLS_ctx.selectedPaper?.status === 'queued'))
+                            if (!!(__VLS_ctx.selectedPaper && ['processing', 'queued', 'paused'].includes(__VLS_ctx.selectedPaper.status)))
                                 throw 0;
                             return (__VLS_ctx.selectedQuestion = { ...q });
                             // @ts-ignore
-                            [busy, busy, busy, selectedPaper, selectedPaper, selectedPaper, selectedPaper, selectedPaper, selectedPaper, selectedPaper, selectedPaper, selectedPaper, selectedPaper, selectedPaper, refreshPaper, refreshPaper, reparsePaper, questions, questions, selectedQuestion,];
+                            [busy, refreshPaper, questions, questions, selectedQuestion,];
                         } },
                     key: (q.id),
                     ...{ class: ({ active: __VLS_ctx.selectedQuestion?.id === q.id }) },
@@ -1718,24 +1937,24 @@ else {
                 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({});
                 __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
                 (q.type);
-                const __VLS_160 = MathPreview;
+                const __VLS_175 = MathPreview;
                 // @ts-ignore
-                const __VLS_161 = __VLS_asFunctionalComponent1(__VLS_160, new __VLS_160({
+                const __VLS_176 = __VLS_asFunctionalComponent1(__VLS_175, new __VLS_175({
                     ...{ class: "question-nav-preview" },
                     text: (q.stem),
                 }));
-                const __VLS_162 = __VLS_161({
+                const __VLS_177 = __VLS_176({
                     ...{ class: "question-nav-preview" },
                     text: (q.stem),
-                }, ...__VLS_functionalComponentArgsRest(__VLS_161));
+                }, ...__VLS_functionalComponentArgsRest(__VLS_176));
                 /** @type {__VLS_StyleScopedClasses['question-nav-preview']} */ ;
                 if (q.status === 'confirmed') {
-                    let __VLS_165;
+                    let __VLS_180;
                     /** @ts-ignore @type { | typeof __VLS_components.CheckCircle2} */
                     CheckCircle2;
                     // @ts-ignore
-                    const __VLS_166 = __VLS_asFunctionalComponent1(__VLS_165, new __VLS_165({}));
-                    const __VLS_167 = __VLS_166({}, ...__VLS_functionalComponentArgsRest(__VLS_166));
+                    const __VLS_181 = __VLS_asFunctionalComponent1(__VLS_180, new __VLS_180({}));
+                    const __VLS_182 = __VLS_181({}, ...__VLS_functionalComponentArgsRest(__VLS_181));
                 }
                 // @ts-ignore
                 [selectedQuestion,];
@@ -1748,12 +1967,12 @@ else {
                 ...{ class: "crop-placeholder" },
             });
             /** @type {__VLS_StyleScopedClasses['crop-placeholder']} */ ;
-            let __VLS_170;
+            let __VLS_185;
             /** @ts-ignore @type { | typeof __VLS_components.Archive} */
             Archive;
             // @ts-ignore
-            const __VLS_171 = __VLS_asFunctionalComponent1(__VLS_170, new __VLS_170({}));
-            const __VLS_172 = __VLS_171({}, ...__VLS_functionalComponentArgsRest(__VLS_171));
+            const __VLS_186 = __VLS_asFunctionalComponent1(__VLS_185, new __VLS_185({}));
+            const __VLS_187 = __VLS_186({}, ...__VLS_functionalComponentArgsRest(__VLS_186));
             __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({});
             __VLS_asFunctionalElement1(__VLS_intrinsics.small, __VLS_intrinsics.small)({});
             if (__VLS_ctx.selectedQuestion) {
@@ -1765,12 +1984,12 @@ else {
                     ...{ class: "confidence" },
                 });
                 /** @type {__VLS_StyleScopedClasses['confidence']} */ ;
-                let __VLS_175;
+                let __VLS_190;
                 /** @ts-ignore @type { | typeof __VLS_components.WandSparkles} */
                 WandSparkles;
                 // @ts-ignore
-                const __VLS_176 = __VLS_asFunctionalComponent1(__VLS_175, new __VLS_175({}));
-                const __VLS_177 = __VLS_176({}, ...__VLS_functionalComponentArgsRest(__VLS_176));
+                const __VLS_191 = __VLS_asFunctionalComponent1(__VLS_190, new __VLS_190({}));
+                const __VLS_192 = __VLS_191({}, ...__VLS_functionalComponentArgsRest(__VLS_191));
                 __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
                 (__VLS_ctx.selectedQuestion.confidence);
                 __VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
@@ -1790,14 +2009,14 @@ else {
                 });
                 /** @type {__VLS_StyleScopedClasses['formatted-question']} */ ;
                 __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
-                const __VLS_180 = MathPreview;
+                const __VLS_195 = MathPreview;
                 // @ts-ignore
-                const __VLS_181 = __VLS_asFunctionalComponent1(__VLS_180, new __VLS_180({
+                const __VLS_196 = __VLS_asFunctionalComponent1(__VLS_195, new __VLS_195({
                     text: (__VLS_ctx.selectedQuestion.stem),
                 }));
-                const __VLS_182 = __VLS_181({
+                const __VLS_197 = __VLS_196({
                     text: (__VLS_ctx.selectedQuestion.stem),
-                }, ...__VLS_functionalComponentArgsRest(__VLS_181));
+                }, ...__VLS_functionalComponentArgsRest(__VLS_196));
                 __VLS_asFunctionalElement1(__VLS_intrinsics.details, __VLS_intrinsics.details)({
                     ...{ class: "source-editor" },
                 });
@@ -1820,14 +2039,14 @@ else {
                         });
                         __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
                         (String.fromCharCode(65 + index));
-                        const __VLS_185 = MathPreview;
+                        const __VLS_200 = MathPreview;
                         // @ts-ignore
-                        const __VLS_186 = __VLS_asFunctionalComponent1(__VLS_185, new __VLS_185({
+                        const __VLS_201 = __VLS_asFunctionalComponent1(__VLS_200, new __VLS_200({
                             text: (__VLS_ctx.optionText(option, index)),
                         }));
-                        const __VLS_187 = __VLS_186({
+                        const __VLS_202 = __VLS_201({
                             text: (__VLS_ctx.optionText(option, index)),
-                        }, ...__VLS_functionalComponentArgsRest(__VLS_186));
+                        }, ...__VLS_functionalComponentArgsRest(__VLS_201));
                         // @ts-ignore
                         [selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, optionText,];
                     }
@@ -1859,14 +2078,14 @@ else {
                 /** @type {__VLS_StyleScopedClasses['formatted-question']} */ ;
                 /** @type {__VLS_StyleScopedClasses['compact']} */ ;
                 __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
-                const __VLS_190 = MathPreview;
+                const __VLS_205 = MathPreview;
                 // @ts-ignore
-                const __VLS_191 = __VLS_asFunctionalComponent1(__VLS_190, new __VLS_190({
+                const __VLS_206 = __VLS_asFunctionalComponent1(__VLS_205, new __VLS_205({
                     text: (__VLS_ctx.selectedQuestion.answer),
                 }));
-                const __VLS_192 = __VLS_191({
+                const __VLS_207 = __VLS_206({
                     text: (__VLS_ctx.selectedQuestion.answer),
-                }, ...__VLS_functionalComponentArgsRest(__VLS_191));
+                }, ...__VLS_functionalComponentArgsRest(__VLS_206));
                 __VLS_asFunctionalElement1(__VLS_intrinsics.details, __VLS_intrinsics.details)({
                     ...{ class: "source-editor" },
                 });
@@ -1883,14 +2102,14 @@ else {
                     /** @type {__VLS_StyleScopedClasses['formatted-question']} */ ;
                     /** @type {__VLS_StyleScopedClasses['compact']} */ ;
                     __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
-                    const __VLS_195 = MathPreview;
+                    const __VLS_210 = MathPreview;
                     // @ts-ignore
-                    const __VLS_196 = __VLS_asFunctionalComponent1(__VLS_195, new __VLS_195({
+                    const __VLS_211 = __VLS_asFunctionalComponent1(__VLS_210, new __VLS_210({
                         text: (__VLS_ctx.selectedQuestion.analysis),
                     }));
-                    const __VLS_197 = __VLS_196({
+                    const __VLS_212 = __VLS_211({
                         text: (__VLS_ctx.selectedQuestion.analysis),
-                    }, ...__VLS_functionalComponentArgsRest(__VLS_196));
+                    }, ...__VLS_functionalComponentArgsRest(__VLS_211));
                 }
                 __VLS_asFunctionalElement1(__VLS_intrinsics.details, __VLS_intrinsics.details)({
                     ...{ class: "source-editor" },
@@ -1914,12 +2133,12 @@ else {
                 });
                 /** @type {__VLS_StyleScopedClasses['primary']} */ ;
                 /** @type {__VLS_StyleScopedClasses['wide']} */ ;
-                let __VLS_200;
+                let __VLS_215;
                 /** @ts-ignore @type { | typeof __VLS_components.CheckCircle2} */
                 CheckCircle2;
                 // @ts-ignore
-                const __VLS_201 = __VLS_asFunctionalComponent1(__VLS_200, new __VLS_200({}));
-                const __VLS_202 = __VLS_201({}, ...__VLS_functionalComponentArgsRest(__VLS_201));
+                const __VLS_216 = __VLS_asFunctionalComponent1(__VLS_215, new __VLS_215({}));
+                const __VLS_217 = __VLS_216({}, ...__VLS_functionalComponentArgsRest(__VLS_216));
             }
         }
     }
@@ -1934,19 +2153,76 @@ else {
         });
         /** @type {__VLS_StyleScopedClasses['knowledge-panel']} */ ;
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+            ...{ class: "subject-filter-strip knowledge-subject-filter" },
+        });
+        /** @type {__VLS_StyleScopedClasses['subject-filter-strip']} */ ;
+        /** @type {__VLS_StyleScopedClasses['knowledge-subject-filter']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
+                        throw 0;
+                    if (!!(!__VLS_ctx.current))
+                        throw 0;
+                    if (!!(__VLS_ctx.page === 'dashboard'))
+                        throw 0;
+                    if (!!(__VLS_ctx.page === 'tasks'))
+                        throw 0;
+                    if (!!(__VLS_ctx.page === 'papers'))
+                        throw 0;
+                    if (!!(__VLS_ctx.page === 'review'))
+                        throw 0;
+                    if (!(__VLS_ctx.page === 'questions'))
+                        throw 0;
+                    return (__VLS_ctx.questionSubject = '');
+                    // @ts-ignore
+                    [page, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, saveQuestion, libraryEditingQuestion, questionSubject,];
+                } },
+            ...{ class: ({ active: !__VLS_ctx.questionSubject }) },
+        });
+        /** @type {__VLS_StyleScopedClasses['active']} */ ;
+        for (const [subject] of __VLS_vFor((__VLS_ctx.questionSubjects))) {
+            __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
+                            throw 0;
+                        if (!!(!__VLS_ctx.current))
+                            throw 0;
+                        if (!!(__VLS_ctx.page === 'dashboard'))
+                            throw 0;
+                        if (!!(__VLS_ctx.page === 'tasks'))
+                            throw 0;
+                        if (!!(__VLS_ctx.page === 'papers'))
+                            throw 0;
+                        if (!!(__VLS_ctx.page === 'review'))
+                            throw 0;
+                        if (!(__VLS_ctx.page === 'questions'))
+                            throw 0;
+                        return (__VLS_ctx.questionSubject = subject);
+                        // @ts-ignore
+                        [questionSubject, questionSubject, questionSubjects,];
+                    } },
+                key: (subject),
+                ...{ class: ({ active: __VLS_ctx.questionSubject === subject }) },
+            });
+            /** @type {__VLS_StyleScopedClasses['active']} */ ;
+            (subject);
+            // @ts-ignore
+            [questionSubject,];
+        }
+        __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
             ...{ class: "knowledge-title" },
         });
         /** @type {__VLS_StyleScopedClasses['knowledge-title']} */ ;
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({});
-        let __VLS_205;
+        let __VLS_220;
         /** @ts-ignore @type { | typeof __VLS_components.Tags} */
         Tags;
         // @ts-ignore
-        const __VLS_206 = __VLS_asFunctionalComponent1(__VLS_205, new __VLS_205({}));
-        const __VLS_207 = __VLS_206({}, ...__VLS_functionalComponentArgsRest(__VLS_206));
+        const __VLS_221 = __VLS_asFunctionalComponent1(__VLS_220, new __VLS_220({}));
+        const __VLS_222 = __VLS_221({}, ...__VLS_functionalComponentArgsRest(__VLS_221));
         __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
         __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
-        (__VLS_ctx.knowledgePoints.length);
+        (__VLS_ctx.subjectKnowledgePoints.length);
         __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
             ...{ onClick: (...[$event]) => {
                     if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
@@ -1965,7 +2241,7 @@ else {
                         throw 0;
                     return (__VLS_ctx.selectedKnowledgePoint = '');
                     // @ts-ignore
-                    [page, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, selectedQuestion, saveQuestion, libraryEditingQuestion, knowledgePoints, selectedKnowledgePoint,];
+                    [subjectKnowledgePoints, selectedKnowledgePoint,];
                 } },
             ...{ class: "knowledge-all" },
             ...{ class: ({ active: !__VLS_ctx.selectedKnowledgePoint }) },
@@ -1973,7 +2249,7 @@ else {
         /** @type {__VLS_StyleScopedClasses['knowledge-all']} */ ;
         /** @type {__VLS_StyleScopedClasses['active']} */ ;
         __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
-        (__VLS_ctx.confirmedQuestions.length);
+        (__VLS_ctx.subjectQuestionCount);
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
             ...{ class: "knowledge-tree" },
         });
@@ -1997,7 +2273,7 @@ else {
                             throw 0;
                         return (__VLS_ctx.selectedKnowledgePoint = row.point.id);
                         // @ts-ignore
-                        [confirmedQuestions, selectedKnowledgePoint, selectedKnowledgePoint, visibleKnowledgePoints,];
+                        [selectedKnowledgePoint, selectedKnowledgePoint, subjectQuestionCount, visibleKnowledgePoints,];
                     } },
                 key: (row.point.id),
                 ...{ class: "knowledge-node" },
@@ -2032,29 +2308,29 @@ else {
             /** @type {__VLS_StyleScopedClasses['knowledge-toggle']} */ ;
             /** @type {__VLS_StyleScopedClasses['expanded']} */ ;
             /** @type {__VLS_StyleScopedClasses['hidden']} */ ;
-            let __VLS_210;
+            let __VLS_225;
             /** @ts-ignore @type { | typeof __VLS_components.ChevronRight} */
             ChevronRight;
             // @ts-ignore
-            const __VLS_211 = __VLS_asFunctionalComponent1(__VLS_210, new __VLS_210({}));
-            const __VLS_212 = __VLS_211({}, ...__VLS_functionalComponentArgsRest(__VLS_211));
+            const __VLS_226 = __VLS_asFunctionalComponent1(__VLS_225, new __VLS_225({}));
+            const __VLS_227 = __VLS_226({}, ...__VLS_functionalComponentArgsRest(__VLS_226));
             (row.point.name);
             __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
             (row.point.questionCount);
             // @ts-ignore
             [expandedKnowledge,];
         }
-        if (!__VLS_ctx.knowledgePoints.length) {
+        if (!__VLS_ctx.subjectKnowledgePoints.length) {
             __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
                 ...{ class: "knowledge-empty" },
             });
             /** @type {__VLS_StyleScopedClasses['knowledge-empty']} */ ;
-            let __VLS_215;
+            let __VLS_230;
             /** @ts-ignore @type { | typeof __VLS_components.Tags} */
             Tags;
             // @ts-ignore
-            const __VLS_216 = __VLS_asFunctionalComponent1(__VLS_215, new __VLS_215({}));
-            const __VLS_217 = __VLS_216({}, ...__VLS_functionalComponentArgsRest(__VLS_216));
+            const __VLS_231 = __VLS_asFunctionalComponent1(__VLS_230, new __VLS_230({}));
+            const __VLS_232 = __VLS_231({}, ...__VLS_functionalComponentArgsRest(__VLS_231));
             __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
             __VLS_asFunctionalElement1(__VLS_intrinsics.small, __VLS_intrinsics.small)({});
         }
@@ -2082,12 +2358,12 @@ else {
             ...{ class: "search" },
         });
         /** @type {__VLS_StyleScopedClasses['search']} */ ;
-        let __VLS_220;
+        let __VLS_235;
         /** @ts-ignore @type { | typeof __VLS_components.Search} */
         Search;
         // @ts-ignore
-        const __VLS_221 = __VLS_asFunctionalComponent1(__VLS_220, new __VLS_220({}));
-        const __VLS_222 = __VLS_221({}, ...__VLS_functionalComponentArgsRest(__VLS_221));
+        const __VLS_236 = __VLS_asFunctionalComponent1(__VLS_235, new __VLS_235({}));
+        const __VLS_237 = __VLS_236({}, ...__VLS_functionalComponentArgsRest(__VLS_236));
         __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
             placeholder: "搜索题干或来源试卷",
         });
@@ -2110,211 +2386,312 @@ else {
         __VLS_asFunctionalElement1(__VLS_intrinsics.option, __VLS_intrinsics.option)({});
         __VLS_asFunctionalElement1(__VLS_intrinsics.option, __VLS_intrinsics.option)({});
         __VLS_asFunctionalElement1(__VLS_intrinsics.option, __VLS_intrinsics.option)({});
+        __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+            ...{ class: "question-view-switch" },
+        });
+        /** @type {__VLS_StyleScopedClasses['question-view-switch']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
+                        throw 0;
+                    if (!!(!__VLS_ctx.current))
+                        throw 0;
+                    if (!!(__VLS_ctx.page === 'dashboard'))
+                        throw 0;
+                    if (!!(__VLS_ctx.page === 'tasks'))
+                        throw 0;
+                    if (!!(__VLS_ctx.page === 'papers'))
+                        throw 0;
+                    if (!!(__VLS_ctx.page === 'review'))
+                        throw 0;
+                    if (!(__VLS_ctx.page === 'questions'))
+                        throw 0;
+                    return (__VLS_ctx.questionViewMode = 'list');
+                    // @ts-ignore
+                    [busy, subjectKnowledgePoints, selectedKnowledgePoint, createKnowledgePoint, newKnowledgeName, newKnowledgeName, questionSearch, questionType, questionDifficulty, questionViewMode,];
+                } },
+            ...{ class: ({ active: __VLS_ctx.questionViewMode === 'list' }) },
+        });
+        /** @type {__VLS_StyleScopedClasses['active']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
+                        throw 0;
+                    if (!!(!__VLS_ctx.current))
+                        throw 0;
+                    if (!!(__VLS_ctx.page === 'dashboard'))
+                        throw 0;
+                    if (!!(__VLS_ctx.page === 'tasks'))
+                        throw 0;
+                    if (!!(__VLS_ctx.page === 'papers'))
+                        throw 0;
+                    if (!!(__VLS_ctx.page === 'review'))
+                        throw 0;
+                    if (!(__VLS_ctx.page === 'questions'))
+                        throw 0;
+                    return (__VLS_ctx.questionViewMode = 'compare');
+                    // @ts-ignore
+                    [questionViewMode, questionViewMode,];
+                } },
+            ...{ class: ({ active: __VLS_ctx.questionViewMode === 'compare' }) },
+        });
+        /** @type {__VLS_StyleScopedClasses['active']} */ ;
         __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
         (__VLS_ctx.filteredQuestions.length);
-        for (const [q] of __VLS_vFor((__VLS_ctx.pagedQuestions))) {
-            __VLS_asFunctionalElement1(__VLS_intrinsics.article, __VLS_intrinsics.article)({
-                key: (q.id),
-                ...{ class: "question-list-card" },
-            });
-            /** @type {__VLS_StyleScopedClasses['question-list-card']} */ ;
-            __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-                ...{ class: "question-card-head" },
-            });
-            /** @type {__VLS_StyleScopedClasses['question-card-head']} */ ;
-            __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
-                ...{ class: "question-number" },
-            });
-            /** @type {__VLS_StyleScopedClasses['question-number']} */ ;
-            (q.number);
-            __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
-            (q.type);
-            __VLS_asFunctionalElement1(__VLS_intrinsics.i, __VLS_intrinsics.i)({
-                'data-level': (q.difficulty),
-            });
-            (q.difficulty);
-            __VLS_asFunctionalElement1(__VLS_intrinsics.small, __VLS_intrinsics.small)({});
-            (q.sourceGrade);
-            (q.sourceSubject);
-            (q.sourceTitle);
-            __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
-                ...{ onClick: (...[$event]) => {
-                        if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
-                            throw 0;
-                        if (!!(!__VLS_ctx.current))
-                            throw 0;
-                        if (!!(__VLS_ctx.page === 'dashboard'))
-                            throw 0;
-                        if (!!(__VLS_ctx.page === 'tasks'))
-                            throw 0;
-                        if (!!(__VLS_ctx.page === 'papers'))
-                            throw 0;
-                        if (!!(__VLS_ctx.page === 'review'))
-                            throw 0;
-                        if (!(__VLS_ctx.page === 'questions'))
-                            throw 0;
-                        return (__VLS_ctx.libraryEditingQuestion = { ...q });
-                        // @ts-ignore
-                        [busy, libraryEditingQuestion, knowledgePoints, selectedKnowledgePoint, createKnowledgePoint, newKnowledgeName, newKnowledgeName, questionSearch, questionType, questionDifficulty, filteredQuestions, pagedQuestions,];
-                    } },
-                ...{ class: "answer-edit" },
-                ...{ class: ({ active: __VLS_ctx.libraryEditingQuestion?.id === q.id }) },
-                title: "编辑正确答案和解析",
-            });
-            /** @type {__VLS_StyleScopedClasses['answer-edit']} */ ;
-            /** @type {__VLS_StyleScopedClasses['active']} */ ;
-            let __VLS_225;
-            /** @ts-ignore @type { | typeof __VLS_components.FilePenLine} */
-            FilePenLine;
-            // @ts-ignore
-            const __VLS_226 = __VLS_asFunctionalComponent1(__VLS_225, new __VLS_225({}));
-            const __VLS_227 = __VLS_226({}, ...__VLS_functionalComponentArgsRest(__VLS_226));
-            (__VLS_ctx.libraryEditingQuestion?.id === q.id ? '正在编辑' : '编辑答案解析');
-            __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
-                ...{ onClick: (...[$event]) => {
-                        if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
-                            throw 0;
-                        if (!!(!__VLS_ctx.current))
-                            throw 0;
-                        if (!!(__VLS_ctx.page === 'dashboard'))
-                            throw 0;
-                        if (!!(__VLS_ctx.page === 'tasks'))
-                            throw 0;
-                        if (!!(__VLS_ctx.page === 'papers'))
-                            throw 0;
-                        if (!!(__VLS_ctx.page === 'review'))
-                            throw 0;
-                        if (!(__VLS_ctx.page === 'questions'))
-                            throw 0;
-                        return (__VLS_ctx.locateQuestionInPaper(q));
-                        // @ts-ignore
-                        [libraryEditingQuestion, libraryEditingQuestion, locateQuestionInPaper,];
-                    } },
-                ...{ class: "source-locate" },
-                ...{ style: {} },
-                title: "在原卷中定位",
-            });
-            /** @type {__VLS_StyleScopedClasses['source-locate']} */ ;
-            let __VLS_230;
-            /** @ts-ignore @type { | typeof __VLS_components.LocateFixed} */
-            LocateFixed;
-            // @ts-ignore
-            const __VLS_231 = __VLS_asFunctionalComponent1(__VLS_230, new __VLS_230({}));
-            const __VLS_232 = __VLS_231({}, ...__VLS_functionalComponentArgsRest(__VLS_231));
-            __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
-                ...{ onClick: (...[$event]) => {
-                        if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
-                            throw 0;
-                        if (!!(!__VLS_ctx.current))
-                            throw 0;
-                        if (!!(__VLS_ctx.page === 'dashboard'))
-                            throw 0;
-                        if (!!(__VLS_ctx.page === 'tasks'))
-                            throw 0;
-                        if (!!(__VLS_ctx.page === 'papers'))
-                            throw 0;
-                        if (!!(__VLS_ctx.page === 'review'))
-                            throw 0;
-                        if (!(__VLS_ctx.page === 'questions'))
-                            throw 0;
-                        return (__VLS_ctx.editingKnowledgeQuestion = __VLS_ctx.editingKnowledgeQuestion === q.id ? null : q.id);
-                        // @ts-ignore
-                        [editingKnowledgeQuestion, editingKnowledgeQuestion,];
-                    } },
-                ...{ style: {} },
-            });
-            let __VLS_235;
-            /** @ts-ignore @type { | typeof __VLS_components.Tags} */
-            Tags;
-            // @ts-ignore
-            const __VLS_236 = __VLS_asFunctionalComponent1(__VLS_235, new __VLS_235({}));
-            const __VLS_237 = __VLS_236({}, ...__VLS_functionalComponentArgsRest(__VLS_236));
-            const __VLS_240 = QuestionFinalPreview;
-            // @ts-ignore
-            const __VLS_241 = __VLS_asFunctionalComponent1(__VLS_240, new __VLS_240({
-                question: (q),
-            }));
-            const __VLS_242 = __VLS_241({
-                question: (q),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_241));
-            __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-                ...{ class: "question-card-foot" },
-            });
-            /** @type {__VLS_StyleScopedClasses['question-card-foot']} */ ;
-            __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({});
-            for (const [id] of __VLS_vFor((q.knowledgePointIds))) {
-                __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
-                    key: (id),
+        if (__VLS_ctx.questionViewMode === 'list') {
+            for (const [q] of __VLS_vFor((__VLS_ctx.pagedQuestions))) {
+                __VLS_asFunctionalElement1(__VLS_intrinsics.article, __VLS_intrinsics.article)({
+                    key: (q.id),
+                    ...{ class: "question-list-card" },
                 });
-                (__VLS_ctx.knowledgeName(id));
-                // @ts-ignore
-                [knowledgeName,];
-            }
-            if (!q.knowledgePointIds?.length) {
-                __VLS_asFunctionalElement1(__VLS_intrinsics.em, __VLS_intrinsics.em)({});
-            }
-            __VLS_asFunctionalElement1(__VLS_intrinsics.small, __VLS_intrinsics.small)({});
-            (q.answer || '—');
-            if (__VLS_ctx.editingKnowledgeQuestion === q.id) {
+                /** @type {__VLS_StyleScopedClasses['question-list-card']} */ ;
                 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-                    ...{ class: "knowledge-picker" },
+                    ...{ class: "question-card-head" },
                 });
-                /** @type {__VLS_StyleScopedClasses['knowledge-picker']} */ ;
-                for (const [point] of __VLS_vFor((__VLS_ctx.knowledgePoints))) {
-                    __VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({
-                        key: (point.id),
+                /** @type {__VLS_StyleScopedClasses['question-card-head']} */ ;
+                __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+                    ...{ class: "question-number" },
+                });
+                /** @type {__VLS_StyleScopedClasses['question-number']} */ ;
+                (q.number);
+                __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
+                (q.type);
+                __VLS_asFunctionalElement1(__VLS_intrinsics.i, __VLS_intrinsics.i)({
+                    'data-level': (q.difficulty),
+                });
+                (q.difficulty);
+                __VLS_asFunctionalElement1(__VLS_intrinsics.small, __VLS_intrinsics.small)({});
+                (q.sourceGrade);
+                (q.sourceSubject);
+                (q.sourceTitle);
+                __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+                    ...{ onClick: (...[$event]) => {
+                            if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
+                                throw 0;
+                            if (!!(!__VLS_ctx.current))
+                                throw 0;
+                            if (!!(__VLS_ctx.page === 'dashboard'))
+                                throw 0;
+                            if (!!(__VLS_ctx.page === 'tasks'))
+                                throw 0;
+                            if (!!(__VLS_ctx.page === 'papers'))
+                                throw 0;
+                            if (!!(__VLS_ctx.page === 'review'))
+                                throw 0;
+                            if (!(__VLS_ctx.page === 'questions'))
+                                throw 0;
+                            if (!(__VLS_ctx.questionViewMode === 'list'))
+                                throw 0;
+                            return (__VLS_ctx.libraryEditingQuestion = { ...q });
+                            // @ts-ignore
+                            [libraryEditingQuestion, questionViewMode, questionViewMode, filteredQuestions, pagedQuestions,];
+                        } },
+                    ...{ class: "answer-edit" },
+                    ...{ class: ({ active: __VLS_ctx.libraryEditingQuestion?.id === q.id }) },
+                    title: "编辑正确答案和解析",
+                });
+                /** @type {__VLS_StyleScopedClasses['answer-edit']} */ ;
+                /** @type {__VLS_StyleScopedClasses['active']} */ ;
+                let __VLS_240;
+                /** @ts-ignore @type { | typeof __VLS_components.FilePenLine} */
+                FilePenLine;
+                // @ts-ignore
+                const __VLS_241 = __VLS_asFunctionalComponent1(__VLS_240, new __VLS_240({}));
+                const __VLS_242 = __VLS_241({}, ...__VLS_functionalComponentArgsRest(__VLS_241));
+                (__VLS_ctx.libraryEditingQuestion?.id === q.id ? '正在编辑' : '编辑答案解析');
+                __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+                    ...{ onClick: (...[$event]) => {
+                            if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
+                                throw 0;
+                            if (!!(!__VLS_ctx.current))
+                                throw 0;
+                            if (!!(__VLS_ctx.page === 'dashboard'))
+                                throw 0;
+                            if (!!(__VLS_ctx.page === 'tasks'))
+                                throw 0;
+                            if (!!(__VLS_ctx.page === 'papers'))
+                                throw 0;
+                            if (!!(__VLS_ctx.page === 'review'))
+                                throw 0;
+                            if (!(__VLS_ctx.page === 'questions'))
+                                throw 0;
+                            if (!(__VLS_ctx.questionViewMode === 'list'))
+                                throw 0;
+                            return (__VLS_ctx.locateQuestionInPaper(q));
+                            // @ts-ignore
+                            [libraryEditingQuestion, libraryEditingQuestion, locateQuestionInPaper,];
+                        } },
+                    ...{ class: "source-locate" },
+                    ...{ style: {} },
+                    title: "在原卷中定位",
+                });
+                /** @type {__VLS_StyleScopedClasses['source-locate']} */ ;
+                let __VLS_245;
+                /** @ts-ignore @type { | typeof __VLS_components.LocateFixed} */
+                LocateFixed;
+                // @ts-ignore
+                const __VLS_246 = __VLS_asFunctionalComponent1(__VLS_245, new __VLS_245({}));
+                const __VLS_247 = __VLS_246({}, ...__VLS_functionalComponentArgsRest(__VLS_246));
+                __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+                    ...{ onClick: (...[$event]) => {
+                            if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
+                                throw 0;
+                            if (!!(!__VLS_ctx.current))
+                                throw 0;
+                            if (!!(__VLS_ctx.page === 'dashboard'))
+                                throw 0;
+                            if (!!(__VLS_ctx.page === 'tasks'))
+                                throw 0;
+                            if (!!(__VLS_ctx.page === 'papers'))
+                                throw 0;
+                            if (!!(__VLS_ctx.page === 'review'))
+                                throw 0;
+                            if (!(__VLS_ctx.page === 'questions'))
+                                throw 0;
+                            if (!(__VLS_ctx.questionViewMode === 'list'))
+                                throw 0;
+                            return (__VLS_ctx.editingKnowledgeQuestion = __VLS_ctx.editingKnowledgeQuestion === q.id ? null : q.id);
+                            // @ts-ignore
+                            [editingKnowledgeQuestion, editingKnowledgeQuestion,];
+                        } },
+                    ...{ style: {} },
+                });
+                let __VLS_250;
+                /** @ts-ignore @type { | typeof __VLS_components.Tags} */
+                Tags;
+                // @ts-ignore
+                const __VLS_251 = __VLS_asFunctionalComponent1(__VLS_250, new __VLS_250({}));
+                const __VLS_252 = __VLS_251({}, ...__VLS_functionalComponentArgsRest(__VLS_251));
+                const __VLS_255 = QuestionFinalPreview;
+                // @ts-ignore
+                const __VLS_256 = __VLS_asFunctionalComponent1(__VLS_255, new __VLS_255({
+                    question: (q),
+                }));
+                const __VLS_257 = __VLS_256({
+                    question: (q),
+                }, ...__VLS_functionalComponentArgsRest(__VLS_256));
+                __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                    ...{ class: "question-card-foot" },
+                });
+                /** @type {__VLS_StyleScopedClasses['question-card-foot']} */ ;
+                __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({});
+                for (const [id] of __VLS_vFor((q.knowledgePointIds))) {
+                    __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+                        key: (id),
                     });
-                    __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
-                        ...{ onChange: (...[$event]) => {
-                                if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
-                                    throw 0;
-                                if (!!(!__VLS_ctx.current))
-                                    throw 0;
-                                if (!!(__VLS_ctx.page === 'dashboard'))
-                                    throw 0;
-                                if (!!(__VLS_ctx.page === 'tasks'))
-                                    throw 0;
-                                if (!!(__VLS_ctx.page === 'papers'))
-                                    throw 0;
-                                if (!!(__VLS_ctx.page === 'review'))
-                                    throw 0;
-                                if (!(__VLS_ctx.page === 'questions'))
-                                    throw 0;
-                                if (!(__VLS_ctx.editingKnowledgeQuestion === q.id))
-                                    throw 0;
-                                return (__VLS_ctx.toggleQuestionKnowledge(q, point.id));
-                                // @ts-ignore
-                                [knowledgePoints, editingKnowledgeQuestion, toggleQuestionKnowledge,];
-                            } },
-                        type: "checkbox",
-                        checked: (q.knowledgePointIds?.includes(point.id)),
-                    });
-                    (point.name);
+                    (__VLS_ctx.knowledgeName(id));
                     // @ts-ignore
-                    [];
+                    [knowledgeName,];
                 }
-                if (!__VLS_ctx.knowledgePoints.length) {
-                    __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
+                if (!q.knowledgePointIds?.length) {
+                    __VLS_asFunctionalElement1(__VLS_intrinsics.em, __VLS_intrinsics.em)({});
                 }
+                __VLS_asFunctionalElement1(__VLS_intrinsics.small, __VLS_intrinsics.small)({});
+                (q.answer || '—');
+                if (__VLS_ctx.editingKnowledgeQuestion === q.id) {
+                    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                        ...{ class: "knowledge-picker" },
+                    });
+                    /** @type {__VLS_StyleScopedClasses['knowledge-picker']} */ ;
+                    for (const [point] of __VLS_vFor((__VLS_ctx.knowledgePoints))) {
+                        __VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({
+                            key: (point.id),
+                        });
+                        __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+                            ...{ onChange: (...[$event]) => {
+                                    if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
+                                        throw 0;
+                                    if (!!(!__VLS_ctx.current))
+                                        throw 0;
+                                    if (!!(__VLS_ctx.page === 'dashboard'))
+                                        throw 0;
+                                    if (!!(__VLS_ctx.page === 'tasks'))
+                                        throw 0;
+                                    if (!!(__VLS_ctx.page === 'papers'))
+                                        throw 0;
+                                    if (!!(__VLS_ctx.page === 'review'))
+                                        throw 0;
+                                    if (!(__VLS_ctx.page === 'questions'))
+                                        throw 0;
+                                    if (!(__VLS_ctx.questionViewMode === 'list'))
+                                        throw 0;
+                                    if (!(__VLS_ctx.editingKnowledgeQuestion === q.id))
+                                        throw 0;
+                                    return (__VLS_ctx.toggleQuestionKnowledge(q, point.id));
+                                    // @ts-ignore
+                                    [editingKnowledgeQuestion, knowledgePoints, toggleQuestionKnowledge,];
+                                } },
+                            type: "checkbox",
+                            checked: (q.knowledgePointIds?.includes(point.id)),
+                        });
+                        (point.name);
+                        // @ts-ignore
+                        [];
+                    }
+                    if (!__VLS_ctx.knowledgePoints.length) {
+                        __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
+                    }
+                }
+                // @ts-ignore
+                [knowledgePoints,];
             }
+        }
+        else {
+            const __VLS_260 = QuestionCompareView;
             // @ts-ignore
-            [knowledgePoints,];
+            const __VLS_261 = __VLS_asFunctionalComponent1(__VLS_260, new __VLS_260({
+                ...{ 'onChange': {} },
+                questions: (__VLS_ctx.filteredQuestions),
+                index: (__VLS_ctx.compareQuestionIndex),
+            }));
+            const __VLS_262 = __VLS_261({
+                ...{ 'onChange': {} },
+                questions: (__VLS_ctx.filteredQuestions),
+                index: (__VLS_ctx.compareQuestionIndex),
+            }, ...__VLS_functionalComponentArgsRest(__VLS_261));
+            let __VLS_265;
+            const __VLS_266 = {
+                /** @type {typeof __VLS_265.change} */
+                onChange: (...[$event]) => {
+                    if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
+                        throw 0;
+                    if (!!(!__VLS_ctx.current))
+                        throw 0;
+                    if (!!(__VLS_ctx.page === 'dashboard'))
+                        throw 0;
+                    if (!!(__VLS_ctx.page === 'tasks'))
+                        throw 0;
+                    if (!!(__VLS_ctx.page === 'papers'))
+                        throw 0;
+                    if (!!(__VLS_ctx.page === 'review'))
+                        throw 0;
+                    if (!(__VLS_ctx.page === 'questions'))
+                        throw 0;
+                    if (!!(__VLS_ctx.questionViewMode === 'list'))
+                        throw 0;
+                    return (__VLS_ctx.compareQuestionIndex = $event);
+                    // @ts-ignore
+                    [filteredQuestions, compareQuestionIndex, compareQuestionIndex,];
+                },
+            };
+            var __VLS_263;
+            var __VLS_264;
         }
         if (!__VLS_ctx.filteredQuestions.length) {
             __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
                 ...{ class: "question-list-empty" },
             });
             /** @type {__VLS_StyleScopedClasses['question-list-empty']} */ ;
-            let __VLS_245;
+            let __VLS_267;
             /** @ts-ignore @type { | typeof __VLS_components.Search} */
             Search;
             // @ts-ignore
-            const __VLS_246 = __VLS_asFunctionalComponent1(__VLS_245, new __VLS_245({}));
-            const __VLS_247 = __VLS_246({}, ...__VLS_functionalComponentArgsRest(__VLS_246));
+            const __VLS_268 = __VLS_asFunctionalComponent1(__VLS_267, new __VLS_267({}));
+            const __VLS_269 = __VLS_268({}, ...__VLS_functionalComponentArgsRest(__VLS_268));
             __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
             __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
         }
-        if (__VLS_ctx.filteredQuestions.length > __VLS_ctx.pageSize) {
+        if (__VLS_ctx.questionViewMode === 'list' && __VLS_ctx.filteredQuestions.length > __VLS_ctx.pageSize) {
             __VLS_asFunctionalElement1(__VLS_intrinsics.nav, __VLS_intrinsics.nav)({
                 ...{ class: "pagination" },
                 'aria-label': "试题列表分页",
@@ -2336,21 +2713,21 @@ else {
                             throw 0;
                         if (!(__VLS_ctx.page === 'questions'))
                             throw 0;
-                        if (!(__VLS_ctx.filteredQuestions.length > __VLS_ctx.pageSize))
+                        if (!(__VLS_ctx.questionViewMode === 'list' && __VLS_ctx.filteredQuestions.length > __VLS_ctx.pageSize))
                             throw 0;
                         return (__VLS_ctx.questionPage--);
                         // @ts-ignore
-                        [pageSize, filteredQuestions, filteredQuestions, questionPage,];
+                        [pageSize, questionViewMode, filteredQuestions, filteredQuestions, questionPage,];
                     } },
                 disabled: (__VLS_ctx.questionPage === 1),
                 title: "上一页",
             });
-            let __VLS_250;
+            let __VLS_272;
             /** @ts-ignore @type { | typeof __VLS_components.ChevronLeft} */
             ChevronLeft;
             // @ts-ignore
-            const __VLS_251 = __VLS_asFunctionalComponent1(__VLS_250, new __VLS_250({}));
-            const __VLS_252 = __VLS_251({}, ...__VLS_functionalComponentArgsRest(__VLS_251));
+            const __VLS_273 = __VLS_asFunctionalComponent1(__VLS_272, new __VLS_272({}));
+            const __VLS_274 = __VLS_273({}, ...__VLS_functionalComponentArgsRest(__VLS_273));
             for (const [value] of __VLS_vFor((__VLS_ctx.visiblePages(__VLS_ctx.questionPage, __VLS_ctx.questionPageCount)))) {
                 __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
                     ...{ onClick: (...[$event]) => {
@@ -2368,7 +2745,7 @@ else {
                                 throw 0;
                             if (!(__VLS_ctx.page === 'questions'))
                                 throw 0;
-                            if (!(__VLS_ctx.filteredQuestions.length > __VLS_ctx.pageSize))
+                            if (!(__VLS_ctx.questionViewMode === 'list' && __VLS_ctx.filteredQuestions.length > __VLS_ctx.pageSize))
                                 throw 0;
                             return (__VLS_ctx.questionPage = value);
                             // @ts-ignore
@@ -2398,7 +2775,7 @@ else {
                             throw 0;
                         if (!(__VLS_ctx.page === 'questions'))
                             throw 0;
-                        if (!(__VLS_ctx.filteredQuestions.length > __VLS_ctx.pageSize))
+                        if (!(__VLS_ctx.questionViewMode === 'list' && __VLS_ctx.filteredQuestions.length > __VLS_ctx.pageSize))
                             throw 0;
                         return (__VLS_ctx.questionPage++);
                         // @ts-ignore
@@ -2407,33 +2784,33 @@ else {
                 disabled: (__VLS_ctx.questionPage === __VLS_ctx.questionPageCount),
                 title: "下一页",
             });
-            let __VLS_255;
+            let __VLS_277;
             /** @ts-ignore @type { | typeof __VLS_components.ChevronRight} */
             ChevronRight;
             // @ts-ignore
-            const __VLS_256 = __VLS_asFunctionalComponent1(__VLS_255, new __VLS_255({}));
-            const __VLS_257 = __VLS_256({}, ...__VLS_functionalComponentArgsRest(__VLS_256));
+            const __VLS_278 = __VLS_asFunctionalComponent1(__VLS_277, new __VLS_277({}));
+            const __VLS_279 = __VLS_278({}, ...__VLS_functionalComponentArgsRest(__VLS_278));
             __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
             (__VLS_ctx.filteredQuestions.length);
         }
         if (__VLS_ctx.libraryEditingQuestion) {
-            const __VLS_260 = QuestionAnswerEditor;
+            const __VLS_282 = QuestionAnswerEditor;
             // @ts-ignore
-            const __VLS_261 = __VLS_asFunctionalComponent1(__VLS_260, new __VLS_260({
+            const __VLS_283 = __VLS_asFunctionalComponent1(__VLS_282, new __VLS_282({
                 ...{ 'onClose': {} },
                 ...{ 'onSave': {} },
                 question: (__VLS_ctx.libraryEditingQuestion),
                 saving: (__VLS_ctx.busy),
             }));
-            const __VLS_262 = __VLS_261({
+            const __VLS_284 = __VLS_283({
                 ...{ 'onClose': {} },
                 ...{ 'onSave': {} },
                 question: (__VLS_ctx.libraryEditingQuestion),
                 saving: (__VLS_ctx.busy),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_261));
-            let __VLS_265;
-            const __VLS_266 = {
-                /** @type {typeof __VLS_265.close} */
+            }, ...__VLS_functionalComponentArgsRest(__VLS_283));
+            let __VLS_287;
+            const __VLS_288 = {
+                /** @type {typeof __VLS_287.close} */
                 onClose: (...[$event]) => {
                     if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
                         throw 0;
@@ -2456,12 +2833,12 @@ else {
                     [busy, libraryEditingQuestion, libraryEditingQuestion, libraryEditingQuestion, filteredQuestions, questionPage, questionPageCount,];
                 },
             };
-            const __VLS_267 = {
-                /** @type {typeof __VLS_265.save} */
+            const __VLS_289 = {
+                /** @type {typeof __VLS_287.save} */
                 onSave: (__VLS_ctx.saveLibraryAnswer),
             };
-            var __VLS_263;
-            var __VLS_264;
+            var __VLS_285;
+            var __VLS_286;
         }
     }
     else {
@@ -2501,12 +2878,12 @@ else {
             ...{ class: ({ active: __VLS_ctx.setTab === 'mine' }) },
         });
         /** @type {__VLS_StyleScopedClasses['active']} */ ;
-        let __VLS_268;
+        let __VLS_290;
         /** @ts-ignore @type { | typeof __VLS_components.BookOpenCheck} */
         BookOpenCheck;
         // @ts-ignore
-        const __VLS_269 = __VLS_asFunctionalComponent1(__VLS_268, new __VLS_268({}));
-        const __VLS_270 = __VLS_269({}, ...__VLS_functionalComponentArgsRest(__VLS_269));
+        const __VLS_291 = __VLS_asFunctionalComponent1(__VLS_290, new __VLS_290({}));
+        const __VLS_292 = __VLS_291({}, ...__VLS_functionalComponentArgsRest(__VLS_291));
         __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
         (__VLS_ctx.sets.length);
         __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
@@ -2532,12 +2909,12 @@ else {
             ...{ class: ({ active: __VLS_ctx.setTab === 'sales' }) },
         });
         /** @type {__VLS_StyleScopedClasses['active']} */ ;
-        let __VLS_273;
+        let __VLS_295;
         /** @ts-ignore @type { | typeof __VLS_components.ShoppingBag} */
         ShoppingBag;
         // @ts-ignore
-        const __VLS_274 = __VLS_asFunctionalComponent1(__VLS_273, new __VLS_273({}));
-        const __VLS_275 = __VLS_274({}, ...__VLS_functionalComponentArgsRest(__VLS_274));
+        const __VLS_296 = __VLS_asFunctionalComponent1(__VLS_295, new __VLS_295({}));
+        const __VLS_297 = __VLS_296({}, ...__VLS_functionalComponentArgsRest(__VLS_296));
         __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
             ...{ onClick: (...[$event]) => {
                     if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
@@ -2561,12 +2938,12 @@ else {
             ...{ class: "primary" },
         });
         /** @type {__VLS_StyleScopedClasses['primary']} */ ;
-        let __VLS_278;
+        let __VLS_300;
         /** @ts-ignore @type { | typeof __VLS_components.Plus} */
         Plus;
         // @ts-ignore
-        const __VLS_279 = __VLS_asFunctionalComponent1(__VLS_278, new __VLS_278({}));
-        const __VLS_280 = __VLS_279({}, ...__VLS_functionalComponentArgsRest(__VLS_279));
+        const __VLS_301 = __VLS_asFunctionalComponent1(__VLS_300, new __VLS_300({}));
+        const __VLS_302 = __VLS_301({}, ...__VLS_functionalComponentArgsRest(__VLS_301));
         if (__VLS_ctx.setTab === 'mine') {
             __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
                 ...{ class: "set-list-panel" },
@@ -2593,12 +2970,12 @@ else {
                 });
                 /** @type {__VLS_StyleScopedClasses['set-list-title']} */ ;
                 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({});
-                let __VLS_283;
+                let __VLS_305;
                 /** @ts-ignore @type { | typeof __VLS_components.BookOpenCheck} */
                 BookOpenCheck;
                 // @ts-ignore
-                const __VLS_284 = __VLS_asFunctionalComponent1(__VLS_283, new __VLS_283({}));
-                const __VLS_285 = __VLS_284({}, ...__VLS_functionalComponentArgsRest(__VLS_284));
+                const __VLS_306 = __VLS_asFunctionalComponent1(__VLS_305, new __VLS_305({}));
+                const __VLS_307 = __VLS_306({}, ...__VLS_functionalComponentArgsRest(__VLS_306));
                 __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
                 __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
                 (s.title);
@@ -2718,12 +3095,12 @@ else {
                         title: "删除试题集",
                     });
                     /** @type {__VLS_StyleScopedClasses['set-delete-button']} */ ;
-                    let __VLS_288;
+                    let __VLS_310;
                     /** @ts-ignore @type { | typeof __VLS_components.Trash2} */
                     Trash2;
                     // @ts-ignore
-                    const __VLS_289 = __VLS_asFunctionalComponent1(__VLS_288, new __VLS_288({}));
-                    const __VLS_290 = __VLS_289({}, ...__VLS_functionalComponentArgsRest(__VLS_289));
+                    const __VLS_311 = __VLS_asFunctionalComponent1(__VLS_310, new __VLS_310({}));
+                    const __VLS_312 = __VLS_311({}, ...__VLS_functionalComponentArgsRest(__VLS_311));
                     __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
                         ...{ onClick: (...[$event]) => {
                                 if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
@@ -2760,12 +3137,12 @@ else {
                     ...{ class: "set-list-empty" },
                 });
                 /** @type {__VLS_StyleScopedClasses['set-list-empty']} */ ;
-                let __VLS_293;
+                let __VLS_315;
                 /** @ts-ignore @type { | typeof __VLS_components.BookOpenCheck} */
                 BookOpenCheck;
                 // @ts-ignore
-                const __VLS_294 = __VLS_asFunctionalComponent1(__VLS_293, new __VLS_293({}));
-                const __VLS_295 = __VLS_294({}, ...__VLS_functionalComponentArgsRest(__VLS_294));
+                const __VLS_316 = __VLS_asFunctionalComponent1(__VLS_315, new __VLS_315({}));
+                const __VLS_317 = __VLS_316({}, ...__VLS_functionalComponentArgsRest(__VLS_316));
                 __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
                 __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
                 __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
@@ -2795,12 +3172,12 @@ else {
                     ...{ class: "primary" },
                 });
                 /** @type {__VLS_StyleScopedClasses['primary']} */ ;
-                let __VLS_298;
+                let __VLS_320;
                 /** @ts-ignore @type { | typeof __VLS_components.Plus} */
                 Plus;
                 // @ts-ignore
-                const __VLS_299 = __VLS_asFunctionalComponent1(__VLS_298, new __VLS_298({}));
-                const __VLS_300 = __VLS_299({}, ...__VLS_functionalComponentArgsRest(__VLS_299));
+                const __VLS_321 = __VLS_asFunctionalComponent1(__VLS_320, new __VLS_320({}));
+                const __VLS_322 = __VLS_321({}, ...__VLS_functionalComponentArgsRest(__VLS_321));
             }
         }
         else {
@@ -2808,12 +3185,12 @@ else {
                 ...{ class: "sales-panel" },
             });
             /** @type {__VLS_StyleScopedClasses['sales-panel']} */ ;
-            let __VLS_303;
+            let __VLS_325;
             /** @ts-ignore @type { | typeof __VLS_components.ShoppingBag} */
             ShoppingBag;
             // @ts-ignore
-            const __VLS_304 = __VLS_asFunctionalComponent1(__VLS_303, new __VLS_303({}));
-            const __VLS_305 = __VLS_304({}, ...__VLS_functionalComponentArgsRest(__VLS_304));
+            const __VLS_326 = __VLS_asFunctionalComponent1(__VLS_325, new __VLS_325({}));
+            const __VLS_327 = __VLS_326({}, ...__VLS_functionalComponentArgsRest(__VLS_326));
             __VLS_asFunctionalElement1(__VLS_intrinsics.h2, __VLS_intrinsics.h2)({});
             __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({});
             (__VLS_ctx.sets.filter(item => item.status === 'published').length);
@@ -2878,12 +3255,12 @@ else {
             ...{ class: "dropzone" },
         });
         /** @type {__VLS_StyleScopedClasses['dropzone']} */ ;
-        let __VLS_308;
+        let __VLS_330;
         /** @ts-ignore @type { | typeof __VLS_components.UploadCloud} */
         UploadCloud;
         // @ts-ignore
-        const __VLS_309 = __VLS_asFunctionalComponent1(__VLS_308, new __VLS_308({}));
-        const __VLS_310 = __VLS_309({}, ...__VLS_functionalComponentArgsRest(__VLS_309));
+        const __VLS_331 = __VLS_asFunctionalComponent1(__VLS_330, new __VLS_330({}));
+        const __VLS_332 = __VLS_331({}, ...__VLS_functionalComponentArgsRest(__VLS_331));
         __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
         __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
         __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
@@ -2941,9 +3318,9 @@ else {
         /** @type {__VLS_StyleScopedClasses['wide']} */ ;
     }
     if (__VLS_ctx.page === 'assembly') {
-        const __VLS_313 = QuestionSetAssembler;
+        const __VLS_335 = QuestionSetAssembler;
         // @ts-ignore
-        const __VLS_314 = __VLS_asFunctionalComponent1(__VLS_313, new __VLS_313({
+        const __VLS_336 = __VLS_asFunctionalComponent1(__VLS_335, new __VLS_335({
             ...{ 'onClose': {} },
             ...{ 'onSave': {} },
             questions: (__VLS_ctx.confirmedQuestions),
@@ -2951,38 +3328,38 @@ else {
             editing: (!!__VLS_ctx.editingSetId),
             saving: (__VLS_ctx.busy),
         }));
-        const __VLS_315 = __VLS_314({
+        const __VLS_337 = __VLS_336({
             ...{ 'onClose': {} },
             ...{ 'onSave': {} },
             questions: (__VLS_ctx.confirmedQuestions),
             initial: (__VLS_ctx.setForm),
             editing: (!!__VLS_ctx.editingSetId),
             saving: (__VLS_ctx.busy),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_314));
-        let __VLS_318;
-        const __VLS_319 = {
-            /** @type {typeof __VLS_318.close} */
+        }, ...__VLS_functionalComponentArgsRest(__VLS_336));
+        let __VLS_340;
+        const __VLS_341 = {
+            /** @type {typeof __VLS_340.close} */
             onClose: (__VLS_ctx.closeSetEditor),
         };
-        const __VLS_320 = {
-            /** @type {typeof __VLS_318.save} */
+        const __VLS_342 = {
+            /** @type {typeof __VLS_340.save} */
             onSave: (__VLS_ctx.saveSetForm),
         };
-        var __VLS_316;
-        var __VLS_317;
+        var __VLS_338;
+        var __VLS_339;
     }
     if (__VLS_ctx.page === 'review' && __VLS_ctx.selectedQuestion?.boundaryQuality) {
-        let __VLS_321;
+        let __VLS_343;
         /** @ts-ignore @type { | typeof __VLS_components.Teleport | typeof __VLS_components.Teleport} */
         Teleport;
         // @ts-ignore
-        const __VLS_322 = __VLS_asFunctionalComponent1(__VLS_321, new __VLS_321({
+        const __VLS_344 = __VLS_asFunctionalComponent1(__VLS_343, new __VLS_343({
             to: ".inspector",
         }));
-        const __VLS_323 = __VLS_322({
+        const __VLS_345 = __VLS_344({
             to: ".inspector",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_322));
-        const { default: __VLS_326 } = __VLS_324.slots;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_344));
+        const { default: __VLS_348 } = __VLS_346.slots;
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
             ...{ class: "boundary-quality" },
             'data-review': (__VLS_ctx.selectedQuestion.boundaryQuality.requiresManualReview),
@@ -2990,20 +3367,20 @@ else {
         /** @type {__VLS_StyleScopedClasses['boundary-quality']} */ ;
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({});
         if (__VLS_ctx.selectedQuestion.boundaryQuality.requiresManualReview) {
-            let __VLS_327;
+            let __VLS_349;
             /** @ts-ignore @type { | typeof __VLS_components.AlertTriangle} */
             AlertTriangle;
             // @ts-ignore
-            const __VLS_328 = __VLS_asFunctionalComponent1(__VLS_327, new __VLS_327({}));
-            const __VLS_329 = __VLS_328({}, ...__VLS_functionalComponentArgsRest(__VLS_328));
+            const __VLS_350 = __VLS_asFunctionalComponent1(__VLS_349, new __VLS_349({}));
+            const __VLS_351 = __VLS_350({}, ...__VLS_functionalComponentArgsRest(__VLS_350));
         }
         else {
-            let __VLS_332;
+            let __VLS_354;
             /** @ts-ignore @type { | typeof __VLS_components.CheckCircle2} */
             CheckCircle2;
             // @ts-ignore
-            const __VLS_333 = __VLS_asFunctionalComponent1(__VLS_332, new __VLS_332({}));
-            const __VLS_334 = __VLS_333({}, ...__VLS_functionalComponentArgsRest(__VLS_333));
+            const __VLS_355 = __VLS_asFunctionalComponent1(__VLS_354, new __VLS_354({}));
+            const __VLS_356 = __VLS_355({}, ...__VLS_functionalComponentArgsRest(__VLS_355));
         }
         __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
         (__VLS_ctx.selectedQuestion.boundaryQuality.score);
@@ -3019,20 +3396,20 @@ else {
         }
         // @ts-ignore
         [];
-        var __VLS_324;
+        var __VLS_346;
     }
     if (__VLS_ctx.page === 'review' && __VLS_ctx.selectedQuestion) {
-        let __VLS_337;
+        let __VLS_359;
         /** @ts-ignore @type { | typeof __VLS_components.Teleport | typeof __VLS_components.Teleport} */
         Teleport;
         // @ts-ignore
-        const __VLS_338 = __VLS_asFunctionalComponent1(__VLS_337, new __VLS_337({
+        const __VLS_360 = __VLS_asFunctionalComponent1(__VLS_359, new __VLS_359({
             to: ".review-actions",
         }));
-        const __VLS_339 = __VLS_338({
+        const __VLS_361 = __VLS_360({
             to: ".review-actions",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_338));
-        const { default: __VLS_342 } = __VLS_340.slots;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_360));
+        const { default: __VLS_364 } = __VLS_362.slots;
         if (__VLS_ctx.selectedQuestion.figureUrls?.length) {
             __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
                 ...{ onClick: (...[$event]) => {
@@ -3051,12 +3428,12 @@ else {
                 ...{ class: "layout-button" },
             });
             /** @type {__VLS_StyleScopedClasses['layout-button']} */ ;
-            let __VLS_343;
+            let __VLS_365;
             /** @ts-ignore @type { | typeof __VLS_components.Settings2} */
             Settings2;
             // @ts-ignore
-            const __VLS_344 = __VLS_asFunctionalComponent1(__VLS_343, new __VLS_343({}));
-            const __VLS_345 = __VLS_344({}, ...__VLS_functionalComponentArgsRest(__VLS_344));
+            const __VLS_366 = __VLS_asFunctionalComponent1(__VLS_365, new __VLS_365({}));
+            const __VLS_367 = __VLS_366({}, ...__VLS_functionalComponentArgsRest(__VLS_366));
         }
         __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
             ...{ onClick: (__VLS_ctx.saveQuestion) },
@@ -3065,29 +3442,29 @@ else {
         });
         /** @type {__VLS_StyleScopedClasses['primary']} */ ;
         /** @type {__VLS_StyleScopedClasses['save-question-top']} */ ;
-        let __VLS_348;
+        let __VLS_370;
         /** @ts-ignore @type { | typeof __VLS_components.CheckCircle2} */
         CheckCircle2;
         // @ts-ignore
-        const __VLS_349 = __VLS_asFunctionalComponent1(__VLS_348, new __VLS_348({}));
-        const __VLS_350 = __VLS_349({}, ...__VLS_functionalComponentArgsRest(__VLS_349));
+        const __VLS_371 = __VLS_asFunctionalComponent1(__VLS_370, new __VLS_370({}));
+        const __VLS_372 = __VLS_371({}, ...__VLS_functionalComponentArgsRest(__VLS_371));
         (__VLS_ctx.busy ? '保存中' : '确认并保存题目');
         // @ts-ignore
         [busy, busy, saveQuestion,];
-        var __VLS_340;
+        var __VLS_362;
     }
-    if (__VLS_ctx.page === 'review' && (__VLS_ctx.selectedPaper?.status === 'processing' || __VLS_ctx.selectedPaper?.status === 'queued') && __VLS_ctx.processingDetail) {
-        let __VLS_353;
+    if (__VLS_ctx.page === 'review' && __VLS_ctx.selectedPaper && ['processing', 'queued', 'paused'].includes(__VLS_ctx.selectedPaper.status) && __VLS_ctx.processingDetail) {
+        let __VLS_375;
         /** @ts-ignore @type { | typeof __VLS_components.Teleport | typeof __VLS_components.Teleport} */
         Teleport;
         // @ts-ignore
-        const __VLS_354 = __VLS_asFunctionalComponent1(__VLS_353, new __VLS_353({
+        const __VLS_376 = __VLS_asFunctionalComponent1(__VLS_375, new __VLS_375({
             to: ".processing",
         }));
-        const __VLS_355 = __VLS_354({
+        const __VLS_377 = __VLS_376({
             to: ".processing",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_354));
-        const { default: __VLS_358 } = __VLS_356.slots;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_376));
+        const { default: __VLS_380 } = __VLS_378.slots;
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
             ...{ class: "pipeline-detail" },
         });
@@ -3129,71 +3506,71 @@ else {
         }
         // @ts-ignore
         [];
-        var __VLS_356;
+        var __VLS_378;
     }
     if (__VLS_ctx.page === 'review' && __VLS_ctx.selectedPaper && __VLS_ctx.selectedQuestion) {
-        let __VLS_359;
+        let __VLS_381;
         /** @ts-ignore @type { | typeof __VLS_components.Teleport | typeof __VLS_components.Teleport} */
         Teleport;
         // @ts-ignore
-        const __VLS_360 = __VLS_asFunctionalComponent1(__VLS_359, new __VLS_359({
+        const __VLS_382 = __VLS_asFunctionalComponent1(__VLS_381, new __VLS_381({
             to: ".crop-placeholder",
         }));
-        const __VLS_361 = __VLS_360({
+        const __VLS_383 = __VLS_382({
             to: ".crop-placeholder",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_360));
-        const { default: __VLS_364 } = __VLS_362.slots;
-        const __VLS_365 = SourcePaperPreview;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_382));
+        const { default: __VLS_386 } = __VLS_384.slots;
+        const __VLS_387 = SourcePaperPreview;
         // @ts-ignore
-        const __VLS_366 = __VLS_asFunctionalComponent1(__VLS_365, new __VLS_365({
+        const __VLS_388 = __VLS_asFunctionalComponent1(__VLS_387, new __VLS_387({
             ...{ 'onUpdate:regions': {} },
             ...{ 'onRecognize': {} },
             paper: (__VLS_ctx.selectedPaper),
             question: (__VLS_ctx.selectedQuestion),
             recognizing: (__VLS_ctx.recognizing),
         }));
-        const __VLS_367 = __VLS_366({
+        const __VLS_389 = __VLS_388({
             ...{ 'onUpdate:regions': {} },
             ...{ 'onRecognize': {} },
             paper: (__VLS_ctx.selectedPaper),
             question: (__VLS_ctx.selectedQuestion),
             recognizing: (__VLS_ctx.recognizing),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_366));
-        let __VLS_370;
-        const __VLS_371 = {
-            /** @type {typeof __VLS_370.'update:regions'} */
+        }, ...__VLS_functionalComponentArgsRest(__VLS_388));
+        let __VLS_392;
+        const __VLS_393 = {
+            /** @type {typeof __VLS_392.'update:regions'} */
             'onUpdate:regions': (__VLS_ctx.updateRegions),
         };
-        const __VLS_372 = {
-            /** @type {typeof __VLS_370.recognize} */
+        const __VLS_394 = {
+            /** @type {typeof __VLS_392.recognize} */
             onRecognize: (__VLS_ctx.reprocessSelected),
         };
-        var __VLS_368;
-        var __VLS_369;
+        var __VLS_390;
+        var __VLS_391;
         // @ts-ignore
         [page, selectedPaper, selectedPaper, selectedQuestion, selectedQuestion, recognizing, updateRegions, reprocessSelected,];
-        var __VLS_362;
+        var __VLS_384;
     }
     if (__VLS_ctx.layoutOpen && __VLS_ctx.selectedQuestion) {
-        const __VLS_373 = LayoutCanvasEditor;
+        const __VLS_395 = LayoutCanvasEditor;
         // @ts-ignore
-        const __VLS_374 = __VLS_asFunctionalComponent1(__VLS_373, new __VLS_373({
+        const __VLS_396 = __VLS_asFunctionalComponent1(__VLS_395, new __VLS_395({
             ...{ 'onClose': {} },
             ...{ 'onSave': {} },
             ...{ 'onQuestionUpdated': {} },
             question: (__VLS_ctx.selectedQuestion),
             saving: (__VLS_ctx.busy),
         }));
-        const __VLS_375 = __VLS_374({
+        const __VLS_397 = __VLS_396({
             ...{ 'onClose': {} },
             ...{ 'onSave': {} },
             ...{ 'onQuestionUpdated': {} },
             question: (__VLS_ctx.selectedQuestion),
             saving: (__VLS_ctx.busy),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_374));
-        let __VLS_378;
-        const __VLS_379 = {
-            /** @type {typeof __VLS_378.close} */
+        }, ...__VLS_functionalComponentArgsRest(__VLS_396));
+        let __VLS_400;
+        const __VLS_401 = {
+            /** @type {typeof __VLS_400.close} */
             onClose: (...[$event]) => {
                 if (!!(!__VLS_ctx.current && !__VLS_ctx.showAuth))
                     throw 0;
@@ -3206,16 +3583,16 @@ else {
                 [busy, selectedQuestion, selectedQuestion, layoutOpen, layoutOpen,];
             },
         };
-        const __VLS_380 = {
-            /** @type {typeof __VLS_378.save} */
+        const __VLS_402 = {
+            /** @type {typeof __VLS_400.save} */
             onSave: (__VLS_ctx.saveLayout),
         };
-        const __VLS_381 = {
-            /** @type {typeof __VLS_378.questionUpdated} */
+        const __VLS_403 = {
+            /** @type {typeof __VLS_400.questionUpdated} */
             onQuestionUpdated: (__VLS_ctx.updateQuestionFromLayout),
         };
-        var __VLS_376;
-        var __VLS_377;
+        var __VLS_398;
+        var __VLS_399;
     }
     if (__VLS_ctx.toast) {
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({

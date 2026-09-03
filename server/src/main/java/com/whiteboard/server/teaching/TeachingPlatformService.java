@@ -48,6 +48,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class TeachingPlatformService {
+  private static final long MAX_UPLOAD_BYTES = 100L * 1024L * 1024L;
   private static final List<String> TASK_SERVICE_TYPES = Arrays.asList("直播讲解", "录制讲解", "均可");
   private static final List<String> PRODUCT_TYPES = Arrays.asList("整卷讲解", "单题精讲", "专题合集");
 
@@ -118,6 +119,7 @@ public class TeachingPlatformService {
       String organizationId, String creatorId) throws IOException {
     if (zipFile == null || zipFile.isEmpty()) throw badRequest("请选择 ZIP 文件");
     if (!isZip(zipFile)) throw badRequest("仅支持 ZIP 压缩包");
+    if (zipFile.getSize() > MAX_UPLOAD_BYTES) throw badRequest("ZIP 文件大小不能超过 100 MB");
     Path tempRoot = Files.createTempDirectory("paper-zip-");
     try {
       Map<String, List<ZipDocumentFile>> groups = unzipDocumentGroups(zipFile, tempRoot);
@@ -126,7 +128,7 @@ public class TeachingPlatformService {
       boolean single = groups.size() == 1;
       for (Map.Entry<String, List<ZipDocumentFile>> entry : groups.entrySet()) {
         String batchTitle = single ? title : required(title, "导入批次名称") + " - " + readableZipGroupName(entry.getKey());
-        papers.add(createDocumentBatchSources(entry.getValue(), batchTitle, subject, grade, organizationId, creatorId, "教师上传"));
+        papers.add(createDocumentBatchSources(entry.getValue(), batchTitle, subject, grade, organizationId, creatorId, "教师上传", false));
       }
       return papers;
     } finally {
@@ -139,11 +141,11 @@ public class TeachingPlatformService {
     List<MultipartSourceFile> sourceFiles = files == null ? Collections.emptyList()
       : files.stream().map(MultipartSourceFile::new).collect(java.util.stream.Collectors.toList());
     return createDocumentBatchSources(sourceFiles,
-      title, subject, grade, organizationId, creatorId, sourceType);
+      title, subject, grade, organizationId, creatorId, sourceType, true);
   }
 
   private Map<String, Object> createDocumentBatchSources(List<? extends DocumentSourceFile> files, String title, String subject, String grade,
-      String organizationId, String creatorId, String sourceType) throws IOException {
+      String organizationId, String creatorId, String sourceType, boolean enforceUploadSizeLimit) throws IOException {
     if (files == null || files.isEmpty() || files.stream().allMatch(DocumentSourceFile::isEmpty)) throw badRequest("请选择 PDF、Word 或图片文件");
     List<DocumentSourceFile> sourceFiles = new ArrayList<>(files);
     sourceFiles.removeIf(DocumentSourceFile::isEmpty);
@@ -153,7 +155,7 @@ public class TeachingPlatformService {
     if (sourceFiles.stream().anyMatch(file -> !isPdf(file) && !isWord(file) && !isImage(file))) throw badRequest("仅支持 PDF、DOC、DOCX、JPG、PNG、WEBP 文件");
     if (hasPdf && (hasImage || sourceFiles.size() > 1)) throw badRequest("PDF、Word 与图片不能混合上传，且每次只能上传一个文档");
     long totalSize = sourceFiles.stream().mapToLong(DocumentSourceFile::getSize).sum();
-    if (totalSize > 100L * 1024L * 1024L) throw badRequest("上传文件总大小不能超过 100 MB");
+    if (enforceUploadSizeLimit && totalSize > MAX_UPLOAD_BYTES) throw badRequest("上传文件总大小不能超过 100 MB");
 
     String id = newId("试题导入".equals(sourceType) ? "questionbatch" : "paper");
     Path directory = Paths.get(properties.getStorageRoot(), "papers", id).normalize();
@@ -205,7 +207,6 @@ public class TeachingPlatformService {
   private Map<String, List<ZipDocumentFile>> unzipDocumentGroups(MultipartFile zipFile, Charset charset, Path tempRoot) throws IOException {
     Map<String, List<ZipDocumentFile>> groups = new LinkedHashMap<>();
     byte[] buffer = new byte[8192];
-    long totalSize = 0;
     int fileCount = 0;
     try (ZipInputStream input = new ZipInputStream(zipFile.getInputStream(), charset)) {
       ZipEntry entry;
@@ -224,8 +225,7 @@ public class TeachingPlatformService {
         try (java.io.OutputStream output = Files.newOutputStream(extracted)) {
           int read;
           while ((read = input.read(buffer)) > 0) {
-            totalSize += read; entrySize += read;
-            if (totalSize > 100L * 1024L * 1024L) throw badRequest("ZIP 解压后总大小不能超过 100 MB");
+            entrySize += read;
             output.write(buffer, 0, read);
           }
         }

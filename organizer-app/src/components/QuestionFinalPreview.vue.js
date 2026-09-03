@@ -23,6 +23,13 @@ let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['final-images']} */ ;
 /** @type {__VLS_StyleScopedClasses['final-options']} */ ;
 /** @type {__VLS_StyleScopedClasses['final-options']} */ ;
+/** @type {__VLS_StyleScopedClasses['final-answer-panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['final-answer-panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['final-answer-panel']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.section, __VLS_intrinsics.section)({
+    ...{ class: "final-preview" },
+});
+/** @type {__VLS_StyleScopedClasses['final-preview']} */ ;
 if (__VLS_ctx.hasLayout) {
     __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
         ...{ class: "final-layout" },
@@ -149,8 +156,32 @@ else {
         }
     }
 }
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+    ...{ class: "final-answer-panel" },
+});
+/** @type {__VLS_StyleScopedClasses['final-answer-panel']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
+const __VLS_30 = MathPreview;
 // @ts-ignore
-[];
+const __VLS_31 = __VLS_asFunctionalComponent1(__VLS_30, new __VLS_30({
+    text: (__VLS_ctx.question.answer || '尚未填写答案'),
+}));
+const __VLS_32 = __VLS_31({
+    text: (__VLS_ctx.question.answer || '尚未填写答案'),
+}, ...__VLS_functionalComponentArgsRest(__VLS_31));
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
+const __VLS_35 = MathPreview;
+// @ts-ignore
+const __VLS_36 = __VLS_asFunctionalComponent1(__VLS_35, new __VLS_35({
+    text: (__VLS_ctx.question.analysis || '尚未填写解析'),
+}));
+const __VLS_37 = __VLS_36({
+    text: (__VLS_ctx.question.analysis || '尚未填写解析'),
+}, ...__VLS_functionalComponentArgsRest(__VLS_36));
+// @ts-ignore
+[question, question,];
 const __VLS_export = (await import('vue')).defineComponent({
     __typeProps: {},
 });
