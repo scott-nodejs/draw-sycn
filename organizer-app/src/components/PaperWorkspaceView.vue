@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed,ref,watch } from 'vue'
 import { Check,FileText,Folder,LoaderCircle,RefreshCw,Trash2 } from 'lucide-vue-next'
-import { type Paper } from '../api'
+import { api,type Paper,type Question } from '../api'
 import SourcePaperPreview from './SourcePaperPreview.vue'
 
 const props=defineProps<{papers:Paper[];selectedId?:string;busy?:boolean}>()
-const emit=defineEmits<{(event:'select',paper:Paper):void;(event:'open',paper:Paper):void;(event:'retry',paper:Paper):void;(event:'delete',paper:Paper):void}>()
+const emit=defineEmits<{(event:'select',paper:Paper):void;(event:'open',paper:Paper):void;(event:'retry',paper:Paper):void;(event:'delete',paper:Paper):void;(event:'split-page',paper:Paper,pageNumber:number):void}>()
 const selected=computed(()=>props.papers.find(paper=>paper.id===props.selectedId)||props.papers[0]||null)
+const previewQuestions=ref<Question[]>([])
+let questionLoadGeneration=0
 
 const statusLabel=(paper:Paper)=>paper.status==='queued'?'排队中':paper.status==='processing'?'解析中':paper.status==='paused'?'已暂停':paper.status==='failed'?'解析失败':paper.status==='review'?'待校对':'解析完成'
 const statusDone=(paper:Paper)=>!['queued','processing','paused','failed'].includes(paper.status)
@@ -21,6 +23,13 @@ const timeline=computed(()=>{
 })
 
 function choose(paper:Paper){emit('select',paper)}
+async function loadPreviewQuestions(){
+ const generation=++questionLoadGeneration,paper=selected.value
+ previewQuestions.value=[]
+ if(!paper||!statusDone(paper))return
+ try{const items=await api.questions(paper.id);if(generation===questionLoadGeneration)previewQuestions.value=items}catch{/* The paper preview remains usable when question metadata is unavailable. */}
+}
+watch(()=>selected.value?.id,loadPreviewQuestions,{immediate:true})
 </script>
 
 <template>
@@ -35,7 +44,7 @@ function choose(paper:Paper){emit('select',paper)}
    </div>
   </aside>
 
-  <section class="workspace-preview"><div class="workspace-source-shell"><SourcePaperPreview :paper="selected" :editable="false"/></div></section>
+  <section class="workspace-preview"><div class="workspace-source-shell"><SourcePaperPreview :paper="selected" :questions="previewQuestions" :editable="false" splittable :split-disabled="busy" @split-page="emit('split-page',selected,$event)"/></div></section>
 
   <aside class="workspace-detail">
    <section><span>文件名</span><h3>{{selected.title}}</h3></section>

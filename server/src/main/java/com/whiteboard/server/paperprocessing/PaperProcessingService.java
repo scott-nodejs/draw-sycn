@@ -579,6 +579,23 @@ public class PaperProcessingService {
     if (changed == 0) throw new ResponseStatusException(HttpStatus.CONFLICT, "当前任务未处于暂停状态");
     return status(paperId, userId);
   }
+  public Map<String, Object> splitPage(String paperId, int pageNumber, String userId) {
+    assertOwner(paperId, userId);
+    String jobStatus=jdbc.queryForObject("SELECT status FROM teaching_parse_job WHERE paper_id=? ORDER BY created_at DESC,id DESC LIMIT 1",String.class,paperId);
+    if ("queued".equals(jobStatus)||"processing".equals(jobStatus)||"paused".equals(jobStatus)) throw new ResponseStatusException(HttpStatus.CONFLICT,"任务运行中，暂时不能拆分页面");
+    try {
+      String raw=jdbc.queryForObject("SELECT COALESCE(page_split_config_json,'[]') FROM teaching_paper WHERE id=?",String.class,paperId);
+      java.util.Set<Integer> splits=new java.util.TreeSet<>(); JsonNode parsed=json.readTree(raw==null?"[]":raw);
+      if(parsed.isArray())for(JsonNode item:parsed)if(item.asInt()>0)splits.add(item.asInt());
+      Integer outputPages=jdbc.queryForObject("SELECT COUNT(*) FROM paper_page WHERE paper_id=?",Integer.class,paperId);
+      int sourcePages=(outputPages==null?0:outputPages)-splits.size(),outputCursor=1,sourcePage=0;
+      for(int source=1;source<=sourcePages;source++){int span=splits.contains(source)?2:1;if(pageNumber>=outputCursor&&pageNumber<outputCursor+span){if(span==2)throw new ResponseStatusException(HttpStatus.CONFLICT,"这一页已经拆分过了");sourcePage=source;break;}outputCursor+=span;}
+      if(sourcePage==0)throw new ResponseStatusException(HttpStatus.NOT_FOUND,"找不到要拆分的页面");
+      splits.add(sourcePage); ArrayNode config=json.createArrayNode();splits.forEach(config::add);
+      jdbc.update("UPDATE teaching_paper SET page_split_config_json=?,cloud_status='pending',cloud_error='',updated_at=? WHERE id=?",json.writeValueAsString(config),now(),paperId);
+      return retry(paperId,userId);
+    } catch(ResponseStatusException error){throw error;} catch(Exception error){throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,"保存拆页设置失败",error);}
+  }
   private void assertOwner(String paperId, String userId) { Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM teaching_paper WHERE id=? AND creator_id=?", Integer.class, paperId, userId); if (count == null || count == 0) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "无权访问该试卷"); }
   private void failOrRetry(Map<String, Object> job, Exception error) {
     Integer paused = jdbc.queryForObject("SELECT COUNT(*) FROM teaching_parse_job WHERE id=? AND status='paused'", Integer.class, job.get("id"));

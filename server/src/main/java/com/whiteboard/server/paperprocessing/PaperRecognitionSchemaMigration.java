@@ -12,6 +12,7 @@ public class PaperRecognitionSchemaMigration {
 
   @PostConstruct
   public void migrate() {
+    addPaperColumn("page_split_config_json","JSON NULL");
     addColumn("page_source_type","VARCHAR(32) NOT NULL DEFAULT 'image' AFTER status");
     addColumn("parse_strategy","VARCHAR(48) NOT NULL DEFAULT 'full_ocr' AFTER page_source_type");
     addColumn("has_text_layer","TINYINT NOT NULL DEFAULT 0 AFTER parse_strategy");
@@ -23,4 +24,5 @@ public class PaperRecognitionSchemaMigration {
   }
 
   private void addColumn(String column,String definition){Integer count=jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='paper_page' AND COLUMN_NAME=?",Integer.class,column);if(count!=null&&count==0)jdbc.execute("ALTER TABLE paper_page ADD COLUMN "+column+" "+definition);}
+  private void addPaperColumn(String column,String definition){Integer count=jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='teaching_paper' AND COLUMN_NAME=?",Integer.class,column);if(count!=null&&count==0)jdbc.execute("ALTER TABLE teaching_paper ADD COLUMN "+column+" "+definition);}
 }

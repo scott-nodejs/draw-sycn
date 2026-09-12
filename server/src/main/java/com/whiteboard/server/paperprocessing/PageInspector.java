@@ -18,6 +18,12 @@ public class PageInspector {
   public PageInspector(JdbcTemplate jdbc, ObjectMapper json) { this.jdbc = jdbc; this.json = json; }
 
   public void inspect(String paperId, List<Path> sources) throws Exception {
+    String splitConfig=jdbc.queryForObject("SELECT COALESCE(page_split_config_json,'[]') FROM teaching_paper WHERE id=?",String.class,paperId);
+    if(json.readTree(splitConfig==null?"[]":splitConfig).size()>0){
+      List<Integer> pages=jdbc.queryForList("SELECT page_number FROM paper_page WHERE paper_id=? ORDER BY page_number",Integer.class,paperId);
+      for(Integer page:pages)update(paperId,page,"split_image",ParseStrategy.FULL_OCR,false,0,1d,0);
+      return;
+    }
     int globalPage = 0;
     for (Path source : sources) {
       String name = source.getFileName().toString().toLowerCase();

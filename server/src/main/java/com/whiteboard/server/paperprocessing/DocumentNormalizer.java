@@ -1,11 +1,15 @@
 package com.whiteboard.server.paperprocessing;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.awt.image.BufferedImage;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 import javax.imageio.ImageIO;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -21,14 +25,16 @@ import org.springframework.stereotype.Component;
 public class DocumentNormalizer {
   private static final Logger log = LoggerFactory.getLogger(DocumentNormalizer.class);
   private final JdbcTemplate jdbc;
+  private final ObjectMapper json;
 
-  public DocumentNormalizer(JdbcTemplate jdbc) { this.jdbc = jdbc; }
+  public DocumentNormalizer(JdbcTemplate jdbc, ObjectMapper json) { this.jdbc = jdbc; this.json = json; }
 
   public int normalize(String paperId, List<Path> sources, Path paperDirectory) throws Exception {
     Path pagesDirectory = paperDirectory.resolve("pages");
     Files.createDirectories(pagesDirectory);
     jdbc.update("DELETE FROM paper_page WHERE paper_id=?", paperId);
-    int pageNumber = 0;
+    Set<Integer> splitPages = splitPages(paperId);
+    int pageNumber = 0, sourcePageNumber = 0;
     for (Path source : sources) {
       String lowerName = source.getFileName().toString().toLowerCase();
       log.info("Normalizing paper source: paperId={}, source={}", paperId, source.getFileName());
@@ -40,8 +46,8 @@ public class DocumentNormalizer {
             log.info("Rendering PDF page: paperId={}, source={}, page={}/{}", paperId, source.getFileName(), index + 1, document.getNumberOfPages());
             BufferedImage image = renderer.renderImageWithDPI(index, 180, ImageType.RGB);
             try {
-              pageNumber++;
-              savePage(paperId, pageNumber, source, image, pagesDirectory);
+              sourcePageNumber++;
+              pageNumber = saveSourcePage(paperId, pageNumber, sourcePageNumber, source, image, pagesDirectory, splitPages);
             } finally {
               image.flush();
             }
@@ -51,8 +57,8 @@ public class DocumentNormalizer {
         BufferedImage image = ImageIO.read(source.toFile());
         if (image == null) throw new ProviderException("UNSUPPORTED_IMAGE", "无法读取图片：" + source.getFileName());
         try {
-          pageNumber++;
-          savePage(paperId, pageNumber, source, image, pagesDirectory);
+          sourcePageNumber++;
+          pageNumber = saveSourcePage(paperId, pageNumber, sourcePageNumber, source, image, pagesDirectory, splitPages);
         } finally {
           image.flush();
         }
@@ -60,6 +66,26 @@ public class DocumentNormalizer {
     }
     if (pageNumber == 0) throw new ProviderException("EMPTY_DOCUMENT", "文档中没有可处理的页面");
     return pageNumber;
+  }
+
+  private int saveSourcePage(String paperId, int pageNumber, int sourcePageNumber, Path source, BufferedImage image, Path pagesDirectory, Set<Integer> splitPages) throws Exception {
+    if (!splitPages.contains(sourcePageNumber)) {
+      savePage(paperId, ++pageNumber, source, image, pagesDirectory);
+      return pageNumber;
+    }
+    if (image.getWidth() < 2) throw new ProviderException("PAGE_SPLIT_TOO_NARROW", "第 " + sourcePageNumber + " 页宽度不足，无法拆分");
+    int middle = image.getWidth() / 2;
+    savePage(paperId, ++pageNumber, source, image.getSubimage(0, 0, middle, image.getHeight()), pagesDirectory);
+    savePage(paperId, ++pageNumber, source, image.getSubimage(middle, 0, image.getWidth() - middle, image.getHeight()), pagesDirectory);
+    log.info("Source page split into left and right pages: paperId={}, sourcePage={}", paperId, sourcePageNumber);
+    return pageNumber;
+  }
+
+  private Set<Integer> splitPages(String paperId) throws Exception {
+    String value = jdbc.queryForObject("SELECT COALESCE(page_split_config_json,'[]') FROM teaching_paper WHERE id=?", String.class, paperId);
+    Set<Integer> result = new HashSet<>(); JsonNode parsed = json.readTree(value == null ? "[]" : value);
+    if (parsed.isArray()) for (JsonNode item : parsed) if (item.asInt() > 0) result.add(item.asInt());
+    return result;
   }
 
   private void savePage(String paperId, int pageNumber, Path source, BufferedImage image, Path pagesDirectory) throws Exception {

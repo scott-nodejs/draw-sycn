@@ -1,5 +1,5 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
-import { LoaderCircle, Move, ScanLine } from 'lucide-vue-next';
+import { LoaderCircle, Move, ScanLine, Scissors } from 'lucide-vue-next';
 import { api } from '../api';
 const handles = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
 const props = defineProps();
@@ -56,7 +56,7 @@ async function loadPaper() {
     const generation = loadGeneration;
     const count = Math.max(1, props.paper.pageCount);
     pageUrls.value = Array(count).fill(null);
-    const questionPages = [...new Set((props.question?.sourceRegions || []).map(region => region.pageNumber))].filter(page => page >= 1 && page <= count);
+    const questionPages = [...new Set(displayQuestions.value.flatMap(question => (question.sourceRegions || []).map(region => region.pageNumber)))].filter(page => page >= 1 && page <= count);
     const remaining = Array.from({ length: count }, (_, index) => index + 1).filter(page => !questionPages.includes(page));
     await Promise.all(questionPages.map(page => loadPage(page, generation)));
     if (generation !== loadGeneration)
@@ -64,7 +64,8 @@ async function loadPaper() {
     for (let index = 0; index < remaining.length; index += 2)
         await Promise.all(remaining.slice(index, index + 2).map(page => loadPage(page, generation)));
 }
-function regionsForPage(page) { return (props.question?.sourceRegions || []).map((region, index) => ({ region, index })).filter(item => item.region.pageNumber === page); }
+const displayQuestions = computed(() => props.question ? [props.question] : (props.questions || []));
+function regionsForPage(page) { return displayQuestions.value.flatMap(question => (question.sourceRegions || []).map((region, index) => ({ region, index, question, editable: canEdit.value && question.id === props.question?.id }))).filter(item => item.region.pageNumber === page); }
 function scrollToQuestion() { const container = viewport.value, target = container?.querySelector('.paper-question-region'); if (!container || !target)
     return; container.scrollTo({ top: Math.max(0, target.offsetTop + target.parentElement.offsetTop - container.clientHeight * .25), behavior: 'smooth' }); }
 function startAdjust(event, index, mode) { const page = event.currentTarget.closest('.paper-source-page'), region = props.question?.sourceRegions?.[index]; if (!canEdit.value || !page || !region)
@@ -119,6 +120,13 @@ let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['paper-source-preview']} */ ;
 /** @type {__VLS_StyleScopedClasses['paper-source-preview']} */ ;
 /** @type {__VLS_StyleScopedClasses['paper-source-page']} */ ;
+/** @type {__VLS_StyleScopedClasses['page-actions']} */ ;
+/** @type {__VLS_StyleScopedClasses['page-actions']} */ ;
+/** @type {__VLS_StyleScopedClasses['page-actions']} */ ;
+/** @type {__VLS_StyleScopedClasses['page-actions']} */ ;
+/** @type {__VLS_StyleScopedClasses['page-actions']} */ ;
+/** @type {__VLS_StyleScopedClasses['page-actions']} */ ;
+/** @type {__VLS_StyleScopedClasses['page-actions']} */ ;
 /** @type {__VLS_StyleScopedClasses['region-float-actions']} */ ;
 /** @type {__VLS_StyleScopedClasses['region-float-actions']} */ ;
 /** @type {__VLS_StyleScopedClasses['region-float-actions']} */ ;
@@ -140,6 +148,7 @@ let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['paper-source-page']} */ ;
 /** @type {__VLS_StyleScopedClasses['page-loading']} */ ;
 /** @type {__VLS_StyleScopedClasses['page-loading']} */ ;
+/** @type {__VLS_StyleScopedClasses['paper-question-region']} */ ;
 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
     ref: "viewport",
     ...{ class: "paper-source-preview" },
@@ -168,9 +177,31 @@ else {
         /** @type {__VLS_StyleScopedClasses['paper-source-page']} */ ;
         /** @type {__VLS_StyleScopedClasses['page-pending']} */ ;
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-            ...{ class: "page-number" },
+            ...{ class: "page-actions" },
         });
-        /** @type {__VLS_StyleScopedClasses['page-number']} */ ;
+        /** @type {__VLS_StyleScopedClasses['page-actions']} */ ;
+        if (__VLS_ctx.splittable) {
+            __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(__VLS_ctx.loadError && __VLS_ctx.pageUrls.every(url => !url)))
+                            throw 0;
+                        if (!(__VLS_ctx.splittable))
+                            throw 0;
+                        return (__VLS_ctx.emit('split-page', pageIndex + 1));
+                        // @ts-ignore
+                        [loadError, loadError, pageUrls, pageUrls, renderedPages, splittable, emit,];
+                    } },
+                disabled: (__VLS_ctx.splitDisabled),
+                title: "沿中线拆成左右两页",
+            });
+            let __VLS_0;
+            /** @ts-ignore @type { | typeof __VLS_components.Scissors} */
+            Scissors;
+            // @ts-ignore
+            const __VLS_1 = __VLS_asFunctionalComponent1(__VLS_0, new __VLS_0({}));
+            const __VLS_2 = __VLS_1({}, ...__VLS_functionalComponentArgsRest(__VLS_1));
+        }
+        __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
         (pageIndex + 1);
         if (url) {
             __VLS_asFunctionalElement1(__VLS_intrinsics.img)({
@@ -181,7 +212,7 @@ else {
                             throw 0;
                         return (__VLS_ctx.pageRendered(pageIndex + 1));
                         // @ts-ignore
-                        [loadError, loadError, pageUrls, pageUrls, renderedPages, pageRendered,];
+                        [splitDisabled, pageRendered,];
                     } },
                 src: (url),
                 alt: (`${__VLS_ctx.paper.title} 第 ${pageIndex + 1} 页`),
@@ -195,16 +226,16 @@ else {
             });
             /** @type {__VLS_StyleScopedClasses['page-loading']} */ ;
             if (!__VLS_ctx.pageErrors.has(pageIndex + 1)) {
-                let __VLS_0;
+                let __VLS_5;
                 /** @ts-ignore @type { | typeof __VLS_components.LoaderCircle} */
                 LoaderCircle;
                 // @ts-ignore
-                const __VLS_1 = __VLS_asFunctionalComponent1(__VLS_0, new __VLS_0({
+                const __VLS_6 = __VLS_asFunctionalComponent1(__VLS_5, new __VLS_5({
                     ...{ class: "spin" },
                 }));
-                const __VLS_2 = __VLS_1({
+                const __VLS_7 = __VLS_6({
                     ...{ class: "spin" },
-                }, ...__VLS_functionalComponentArgsRest(__VLS_1));
+                }, ...__VLS_functionalComponentArgsRest(__VLS_6));
                 /** @type {__VLS_StyleScopedClasses['spin']} */ ;
             }
             __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
@@ -225,52 +256,65 @@ else {
                 });
             }
         }
-        for (const [item] of __VLS_vFor((__VLS_ctx.canEdit && __VLS_ctx.renderedPages.has(pageIndex + 1) ? __VLS_ctx.regionsForPage(pageIndex + 1) : []))) {
+        for (const [item] of __VLS_vFor((__VLS_ctx.renderedPages.has(pageIndex + 1) ? __VLS_ctx.regionsForPage(pageIndex + 1) : []))) {
             __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
                 ...{ onPointerdown: (...[$event]) => {
                         if (!!(__VLS_ctx.loadError && __VLS_ctx.pageUrls.every(url => !url)))
                             throw 0;
-                        return (__VLS_ctx.startAdjust($event, item.index, 'move'));
+                        return (item.editable && __VLS_ctx.startAdjust($event, item.index, 'move'));
                         // @ts-ignore
-                        [renderedPages, regionsForPage, canEdit, startAdjust,];
+                        [renderedPages, regionsForPage, startAdjust,];
                     } },
-                key: (item.index),
+                key: (`${item.question.id}-${item.index}`),
                 ...{ class: "paper-question-region" },
+                ...{ class: ({ 'read-only': !item.editable }) },
                 ...{ style: ({ left: `${item.region.x0 / 10}%`, top: `${item.region.y0 / 10}%`, width: `${(item.region.x1 - item.region.x0) / 10}%`, height: `${(item.region.y1 - item.region.y0) / 10}%` }) },
             });
             /** @type {__VLS_StyleScopedClasses['paper-question-region']} */ ;
-            __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-                ...{ onPointerdown: () => { } },
-                ...{ class: "region-float-actions" },
-            });
-            /** @type {__VLS_StyleScopedClasses['region-float-actions']} */ ;
-            __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
-            (__VLS_ctx.question?.number);
-            __VLS_asFunctionalElement1(__VLS_intrinsics.em, __VLS_intrinsics.em)({});
-            let __VLS_5;
-            /** @ts-ignore @type { | typeof __VLS_components.Move} */
-            Move;
-            // @ts-ignore
-            const __VLS_6 = __VLS_asFunctionalComponent1(__VLS_5, new __VLS_5({}));
-            const __VLS_7 = __VLS_6({}, ...__VLS_functionalComponentArgsRest(__VLS_6));
-            __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
-                ...{ onClick: (...[$event]) => {
-                        if (!!(__VLS_ctx.loadError && __VLS_ctx.pageUrls.every(url => !url)))
-                            throw 0;
-                        return (__VLS_ctx.emit('recognize'));
-                        // @ts-ignore
-                        [question, emit,];
-                    } },
-                disabled: (__VLS_ctx.recognizing),
-            });
-            let __VLS_10;
-            /** @ts-ignore @type { | typeof __VLS_components.ScanLine} */
-            ScanLine;
-            // @ts-ignore
-            const __VLS_11 = __VLS_asFunctionalComponent1(__VLS_10, new __VLS_10({}));
-            const __VLS_12 = __VLS_11({}, ...__VLS_functionalComponentArgsRest(__VLS_11));
-            (__VLS_ctx.recognizing ? '识别中' : '重新识别');
-            for (const [handle] of __VLS_vFor((__VLS_ctx.handles))) {
+            /** @type {__VLS_StyleScopedClasses['read-only']} */ ;
+            if (item.editable) {
+                __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                    ...{ onPointerdown: () => { } },
+                    ...{ class: "region-float-actions" },
+                });
+                /** @type {__VLS_StyleScopedClasses['region-float-actions']} */ ;
+                __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
+                (item.question.number);
+                __VLS_asFunctionalElement1(__VLS_intrinsics.em, __VLS_intrinsics.em)({});
+                let __VLS_10;
+                /** @ts-ignore @type { | typeof __VLS_components.Move} */
+                Move;
+                // @ts-ignore
+                const __VLS_11 = __VLS_asFunctionalComponent1(__VLS_10, new __VLS_10({}));
+                const __VLS_12 = __VLS_11({}, ...__VLS_functionalComponentArgsRest(__VLS_11));
+                __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+                    ...{ onClick: (...[$event]) => {
+                            if (!!(__VLS_ctx.loadError && __VLS_ctx.pageUrls.every(url => !url)))
+                                throw 0;
+                            if (!(item.editable))
+                                throw 0;
+                            return (__VLS_ctx.emit('recognize'));
+                            // @ts-ignore
+                            [emit,];
+                        } },
+                    disabled: (__VLS_ctx.recognizing),
+                });
+                let __VLS_15;
+                /** @ts-ignore @type { | typeof __VLS_components.ScanLine} */
+                ScanLine;
+                // @ts-ignore
+                const __VLS_16 = __VLS_asFunctionalComponent1(__VLS_15, new __VLS_15({}));
+                const __VLS_17 = __VLS_16({}, ...__VLS_functionalComponentArgsRest(__VLS_16));
+                (__VLS_ctx.recognizing ? '识别中' : '重新识别');
+            }
+            else {
+                __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+                    ...{ class: "region-number" },
+                });
+                /** @type {__VLS_StyleScopedClasses['region-number']} */ ;
+                (item.question.number);
+            }
+            for (const [handle] of __VLS_vFor((item.editable ? __VLS_ctx.handles : []))) {
                 __VLS_asFunctionalElement1(__VLS_intrinsics.i, __VLS_intrinsics.i)({
                     ...{ onPointerdown: (...[$event]) => {
                             if (!!(__VLS_ctx.loadError && __VLS_ctx.pageUrls.every(url => !url)))

@@ -13,4 +13,5 @@ public class PaperProcessingController {
   @PostMapping("/retry") @ResponseStatus(HttpStatus.ACCEPTED) public Map<String, Object> retry(@PathVariable String paperId, @RequestHeader("X-User-Id") String userId) { return processing.retry(paperId, userId); }
   @PostMapping("/pause") public Map<String, Object> pause(@PathVariable String paperId, @RequestHeader("X-User-Id") String userId) { return processing.pause(paperId, userId); }
   @PostMapping("/resume") @ResponseStatus(HttpStatus.ACCEPTED) public Map<String, Object> resume(@PathVariable String paperId, @RequestHeader("X-User-Id") String userId) { return processing.resume(paperId, userId); }
+  @PostMapping("/pages/{pageNumber}/split") @ResponseStatus(HttpStatus.ACCEPTED) public Map<String, Object> splitPage(@PathVariable String paperId, @PathVariable int pageNumber, @RequestHeader("X-User-Id") String userId) { return processing.splitPage(paperId, pageNumber, userId); }
 }
